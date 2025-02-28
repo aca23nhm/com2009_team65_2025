@@ -23,7 +23,7 @@ class VelocityController(Node):
 
         # Motion parameters
         self.radius = 0.5  # 1m diameter = 0.5m radius
-        self.linear_speed = (2 * math.pi * self.radius) / 30.0  # Complete full circle in 30 seconds
+        self.linear_speed = (2 * math.pi * self.radius) / 27.0  # Complete full circle in 30 seconds
         self.angular_speed = self.linear_speed / self.radius  # ω = v/r
 
         # Motion tracking
@@ -76,7 +76,7 @@ class VelocityController(Node):
             twist.angular.z = self.angular_speed  # Counterclockwise motion
 
             # Switch to loop2 when the robot completes a full 360-degree turn
-            if abs(self.yaw_accumulated) >= 2 * math.pi:  # 360 degrees in radians
+            if abs(self.yaw_accumulated) >= 2 * math.pi - 0.14:  # 360 degrees in radians
                 self.phase = "loop2"
                 self.yaw_accumulated = 0.0  # Reset accumulated yaw
                 self.get_logger().info("Switching to second loop (clockwise)")
