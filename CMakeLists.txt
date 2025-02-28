@@ -34,8 +34,13 @@ ament_python_install_package(${PROJECT_NAME}_modules)
 
 # Install Python executables
 install(PROGRAMS
-  scripts/minimal_node.py
+  scripts/velocity_controller.py
   DESTINATION lib/${PROJECT_NAME}
+)
+
+install(DIRECTORY
+  launch
+  DESTINATION share/${PROJECT_NAME}
 )
 
 ament_package()
