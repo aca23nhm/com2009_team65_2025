@@ -35,6 +35,7 @@ ament_python_install_package(${PROJECT_NAME}_modules)
 # Install Python executables
 install(PROGRAMS
   scripts/velocity_controller.py
+  scripts/obstacle_avoidance.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
