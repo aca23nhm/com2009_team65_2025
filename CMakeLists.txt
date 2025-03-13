@@ -15,9 +15,11 @@ find_package(ament_cmake REQUIRED)
 find_package(ament_cmake_python REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclpy REQUIRED)
+
 find_package(rosidl_default_generators REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
-  "action/ExploreForward.action" 
+  "action/ExploreForward.action"
+  "action/Explore.action"
 )
 
 # Include Cpp "include" directory
@@ -41,6 +43,7 @@ install(PROGRAMS
   scripts/explore_forward_server.py
   scripts/explore_forward_client.py
   scripts/velocity_controller.py
+  scripts/explore_server.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -48,5 +51,6 @@ install(DIRECTORY
   launch
   DESTINATION share/${PROJECT_NAME}
 )
+
 
 ament_package()
