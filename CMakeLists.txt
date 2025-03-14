@@ -18,6 +18,7 @@ find_package(rclpy REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "action/ExploreForward.action" 
+  "action/AvoidingObstacles.action"
 )
 
 # Include Cpp "include" directory
@@ -38,6 +39,8 @@ ament_python_install_package(${PROJECT_NAME}_modules)
 
 # Install Python executables
 install(PROGRAMS
+  scripts/avoiding_obstacles_client.py
+  scripts/avoiding_obstacles_server.py
   scripts/explore_forward_server.py
   scripts/explore_forward_client.py
   scripts/velocity_controller.py
