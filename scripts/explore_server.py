@@ -22,7 +22,6 @@ from sensor_msgs.msg import LaserScan
 from math import sqrt, pow, sin, cos, pi
 import numpy as np
 from part5_actions_modules.tb3_tools import quaternion_to_euler
-from random import random 
 from enum import Enum
 
 VELOCITY_PUB_RATE = 10 # Hz
@@ -35,7 +34,8 @@ STOPPING_DISTANCE = 0.25
 FWD_VELOCITY = 0.25
 ANG_VELOCITY = 1
 
-GOAL_RADIUS_ALLOWANCE = 0.5 # metres
+# we want to make sure the robot gets near the goal - because its an area and also its not 100% precise/accurate
+TARGET_RADIUS_ALLOWANCE = 0.5 # metres
 
 class State(Enum):
    NONE = 0
@@ -82,7 +82,8 @@ class ExploreServer(Node):
 
   def goal_callback(self, goal : Explore.Goal):
     self.get_logger().info(f"Stopping distance: {goal.stopping_distance}, the xs are {goal.target_xs}, the ys are {goal.target_ys}")
-    goal_ok = ( # todo add checks to make sure goals are in the right area
+
+    goal_ok = ( # todo add checks to make sure goals are in the 4x4 robot arena
         len(goal.target_xs) == len(goal.target_ys) and
         0.2 < goal.stopping_distance < 1)
     self.goal = goal
@@ -118,7 +119,9 @@ class ExploreServer(Node):
 
         self.await_odom = False
 
-  # todo make this less weird and also handle the looking to the side
+  # todo make this provide a look to the side
+  # we could probably also come up with a better method than the average - it could lead to us clipping
+  # things on the side (i think)
   def lidar_callback(self, scan_msg: LaserScan):
         """
         Callback for the /scan subscriber
@@ -128,8 +131,17 @@ class ExploreServer(Node):
         front = np.array(left_20_deg + right_20_deg) 
 
         filtered_slice = front[front != float("inf")]
+        # this is changed from NaN to Infinity from the example, which is much sensibler because it makes less/greater than checks
+        # work as expected. Otherwise the robot will stop if it cant see anything instead of moving forward.
         self.lidar_reading = filtered_slice.mean() if np.shape(filtered_slice)[0] > 0 else float("Infinity")
         self.await_lidar = False
+
+
+  # Our states have two functions - one when we transition into that state and a callback that gets
+  # called while we're in that state. If we were gonna make this extensible, we would maybe have a
+  # function for when we exit the state too? 
+
+  # also the robot moves backwards sometimes lol - need to code it so it always moves the way its facing
 
   def start_move_towards_target(self):    
     self.target_x = self.goal.request.target_xs[self.target_index]
@@ -160,20 +172,22 @@ class ExploreServer(Node):
       self.get_logger().info("We're up against a wall!")
 
     # if we reach the goal (or close enough to it) then set the target to a new goal
-    if is_within_radius(self.target_x, self.target_y, self.pos_x, self.pos_y, GOAL_RADIUS_ALLOWANCE):
+    if is_within_radius(self.target_x, self.target_y, self.pos_x, self.pos_y, TARGET_RADIUS_ALLOWANCE):
        self.get_logger().info("yipee we reached the goal")
 
-
+  # we can't hot-swap the callback on the timer, so we use this function to decide which one 
+  # to use depending on which state we're in.
   def callback_manager(self):
      match self.state:
         case State.NONE:
           self.get_logger().fatal("Not in any state!")
-          # todo catch fire and die
+          # todo halt and catch fire
         case State.MOVE_TOWARDS_TARGET:
           self.move_towards_target()
         case State.AVOID_OBSTACLE:
-          self.avoid_obstacle()
+          self.avoid_obstacle() # this callback isnt written yet
 
+  # this is the server call-back
   def server_entry_point(self, goal):
 
     self.get_logger().info("Server entry point has been reached.")
@@ -183,7 +197,12 @@ class ExploreServer(Node):
     self.create_timer(FEEDBACK_TIMER_RATE, self.feedback_callback)
     self.start_move_towards_target()
 
-    return Explore.Result()
+    # this line is a problem. based on the example servers, they have this block in a while-loop until the result is done.
+    # but since we hand it off to callbacks, we don't need to block the main thread? which is better coding practice.
+    # however, I don't think the callbacks actually are multithreaded? because blocking this with a while loop will
+    # prevent them from ever executing. but i think there might be a way to make them execute multithreadedly? I read
+    # about callback groups in the docs.
+    return Explore.Result() 
   
 
 def is_within_radius(target_x, target_y, x, y, radius):

@@ -10,3 +10,6 @@ float32 time_elapsed
 float32 current_target_x
 float32 current_target_y
 string current_state
+
+# it might make more sense to make target be a single coordinate
+# pair and move the logic of going through each target to the client
