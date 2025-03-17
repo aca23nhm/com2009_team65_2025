@@ -1,0 +1,12 @@
+# Goal
+float32 fwd_velocity
+float32 ang_velocity
+float32 stopping_distance
+---
+# Result
+float32 total_distance_travelled
+float32 closest_obstacle
+---
+# Feedback
+float32 current_distance_travelled
+float32 current_orientation
