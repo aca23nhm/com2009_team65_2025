@@ -56,53 +56,74 @@ class ExploreForwardServer(Node):
         self.front_obstacle = False
         self.left_obstacle = False
         self.right_obstacle = False
-        self.min_distance = 0.6
+
+        self.MIN_DISTANCE = 0.6
+        self.ANG_VEL = 0.4
+
         self.turn_duration = 0.0
         self.turn_start_time = 0.0
         self.zones_visited = set()
         self.current_x = 0.0
         self.current_y = 0.0
         
-        self.arena_size = 4.0
-        self.zone_size = 1.0
+        self.ARENA_SIZE = 4.0
+        self.ZONE_SIZE = 1.0
         
         self.scan_received = False
         
         self.get_logger().info('Exploration Action Server is ready!')
 
+    def odom_callback(self, msg):
+        self.current_x = msg.pose.pose.position.x
+        self.current_y = msg.pose.pose.position.y
+        
+        zone_x = max(0, min(3, int((self.current_x + self.ARENA_SIZE / 2) // self.ZONE_SIZE)))
+        zone_y = max(0, min(3, int((self.current_y + self.ARENA_SIZE / 2) // self.ZONE_SIZE)))
+        
+        if zone_x in {0, 3} or zone_y in {0, 3}:
+            self.zones_visited.add((zone_x, zone_y))
+            #self.get_logger().info(f'Visited outer zone: ({zone_x}, {zone_y})') 
+
     def laser_callback(self, msg):
         self.scan_received = True
-        front_ranges = [msg.ranges[i] for i in self.angle_to_index(range(-20, 21), msg) if not math.isnan(msg.ranges[i]) and not math.isinf(msg.ranges[i])]
-        left_ranges = [msg.ranges[i] for i in self.angle_to_index(range(50, 91), msg) if not math.isnan(msg.ranges[i]) and not math.isinf(msg.ranges[i])]
-        right_ranges = [msg.ranges[i] for i in self.angle_to_index(range(-90, -49), msg) if not math.isnan(msg.ranges[i]) and not math.isinf(msg.ranges[i])]
+        # create segments, a list of 20 degree slices of our environment
+        self.segments = []
+        for angle in range(359, 0, -20): # count backwards so we scan clockwise
+            self.segments.append(
+                min([msg.ranges[i] for i in range(angle-19, angle) if not math.isnan(msg.ranges[i])], default=math.inf)
+            )
         
-        self.front_obstacle = min(front_ranges, default=10.0) < self.min_distance
-        self.left_obstacle = min(left_ranges, default=10.0) < self.min_distance
-        self.right_obstacle = min(right_ranges, default=10.0) < self.min_distance
-        
+        self.obstacles : list = list(map(lambda x: x < self.MIN_DISTANCE, self.segments)) # can we be smarter about minimum distance i.e. can it fit at the given distance?
         self.update_movement_state()
     
     def angle_to_index(self, angles, msg):
         return [int((math.radians(angle) - msg.angle_min) / msg.angle_increment) for angle in angles if 0 <= int((math.radians(angle) - msg.angle_min) / msg.angle_increment) < len(msg.ranges)]
     
-    def odom_callback(self, msg):
-        self.current_x = msg.pose.pose.position.x
-        self.current_y = msg.pose.pose.position.y
-        
-        zone_x = max(0, min(3, int((self.current_x + self.arena_size / 2) // self.zone_size)))
-        zone_y = max(0, min(3, int((self.current_y + self.arena_size / 2) // self.zone_size)))
-        
-        if zone_x in {0, 3} or zone_y in {0, 3}:
-            self.zones_visited.add((zone_x, zone_y))
-            self.get_logger().info(f'Visited outer zone: ({zone_x}, {zone_y})')
+    def is_front_obstacle(self): # is there an obstacle in the front 40 degrees?
+        return self.obstacles[0] or self.obstacles[17] # again we can maybe smarten this up to allow the robot to slip through smaller gaps.
+
+    def find_direction_to_turn_to(self):
+        angle = None
+        for i in range(len(self.obstacles)):
+            if not self.obstacles[i]: # currently we just take the first clear direction. we could rewrite this to bias
+                angle = i * 20 + 10   # towards a region we haven't visited yet.
+                break
+        if angle is None:
+            self.get_logger().fatal("There is no clear way for us to turn!!!")
+        return angle
     
     def update_movement_state(self):
-        if self.front_obstacle:
+        if self.is_front_obstacle() and not self.turn:
             self.move_forward = False
             self.turn = True
-            self.turn_clockwise = self.left_obstacle
+            
+            # we can definitely save time by changing the direction we rotate.
             self.turn_start_time = time.time()
-            self.turn_duration = random.uniform(1.0, 2.0)
+            deg_to_turn = self.find_direction_to_turn_to()
+            time_to_turn = math.radians(deg_to_turn) / self.ANG_VEL
+            self.turn_duration = time_to_turn # ang_vel = radians/seconds => seconds = radians / ang_vel
+
+            self.get_logger().info(f"Turning {deg_to_turn}° - turning for {time_to_turn} seconds to achieve this")
         elif self.turn and (time.time() - self.turn_start_time > self.turn_duration):
             self.turn = False
             self.move_forward = True
@@ -143,10 +164,10 @@ class ExploreForwardServer(Node):
     
     def send_velocity_commands(self):
         vel_cmd = Twist()
-        fwd_vel, ang_vel = 0.4, 0.4
+        fwd_vel = 0.4
         
         if self.turn:
-            vel_cmd.linear.x, vel_cmd.angular.z = 0.0, ang_vel if not self.turn_clockwise else -ang_vel
+            vel_cmd.linear.x, vel_cmd.angular.z = 0.0, self.ANG_VEL if not self.turn_clockwise else -self.ANG_VEL
         elif self.move_forward:
             vel_cmd.linear.x, vel_cmd.angular.z = fwd_vel, 0.0
         
