@@ -62,6 +62,7 @@ class ExploreForwardServer(Node):
 
         self.turn_duration = 0.0
         self.turn_start_time = 0.0
+        self.clockwise = True
         self.zones_visited = set()
         self.current_x = 0.0
         self.current_y = 0.0
@@ -70,9 +71,10 @@ class ExploreForwardServer(Node):
         self.ZONE_SIZE = 1.0
 
         # coordinates, from origin, in metres, of the centres of all of the zones
-        # top row + bottom row + sides
-        zones : list = [(x/10, 1.5) for x in range(-15, 20, 5)] + [(x/10, -1.5) for x in range(-15, 20, 5) ] + [(-1.5, 0.5), (-1.5, -0.5), (1.5, 0.5), (1.5, -0.5)] # 12, 11, 5, 6
+        # top row + bottom row + sides   1 2 3 4                      5              6                   7  8  9  10                                11          12   
+        zones : list = [(x/10, 1.5) for x in range(-15, 20, 10)] + [(1.5, 0.5), (1.5, -0.5)] + [(x/10, -1.5) for x in range(15, -20, -10) ] + [(-1.5, -0.5), (-1.5, 0.5)]
         self.zones_visited = dict(zip(zones, [False] * len(zones))) # dict with zones as keys and bools as values
+        self.get_logger().info(f"self.zones_visited is initialised as {self.zones_visited}")
 
         self.scan_received = False
         
@@ -82,12 +84,13 @@ class ExploreForwardServer(Node):
         self.current_x = msg.pose.pose.position.x
         self.current_y = msg.pose.pose.position.y
 
-        current_square = list(filter(lambda k : is_in_square(
+        current_square = list(filter(lambda k : is_in_circle( # using the circle instead of the square to make sure we fully enter the square
             self.current_x, self.current_y, *k, 1 # the star is an unpacking operator since k is a tuple
         ), self.zones_visited.keys()))
-        
-        if current_square and not self.zones_visited[current_square]:
-            self.get_logger().info(f"We just visited the zone at ({current_square[0]}, {current_square[1]})!")
+
+        if current_square != [] and not self.zones_visited[current_square[0]]:
+            current_square = current_square[0]
+            self.get_logger().info(f"We just visited Zone {self.zone_at_coords((current_square[0], current_square[1]))}!")
             self.zones_visited[current_square] = True
 
     def laser_callback(self, msg):
@@ -102,6 +105,9 @@ class ExploreForwardServer(Node):
         self.obstacles : list = list(map(lambda x: x < self.MIN_DISTANCE, self.segments)) # can we be smarter about minimum distance i.e. can it fit at the given distance?
         self.update_movement_state()
     
+    def zone_at_coords(self, coords):
+        return list(self.zones_visited.keys()).index(coords) + 1
+
     def angle_to_index(self, angles, msg):
         return [int((math.radians(angle) - msg.angle_min) / msg.angle_increment) for angle in angles if 0 <= int((math.radians(angle) - msg.angle_min) / msg.angle_increment) < len(msg.ranges)]
     
@@ -134,11 +140,14 @@ class ExploreForwardServer(Node):
 
     def find_direction_to_turn_to_zone_based(self):
         unvisited = list(filter(lambda k: not self.zones_visited[k] ,self.zones_visited.keys()))
-        unvisited.sort(key=lambda k : self.tan_angle_to_point(*k)) # do we need to arctan this? idr a level geometry :D
+        unvisited.sort(key=lambda k : abs(self.tan_angle_to_point(*k))) # abs it so the shortest turn (otherwise it will always turn the negativest)
         target = unvisited[0]
+
+        self.get_logger().info(f"We are turning towards Zone {self.zone_at_coords(target)}")
         angle = math.atan(self.tan_angle_to_point(target[0], target[1]))
+        self.turn_clockwise = angle > 0
         return angle
-        
+    
 
     def update_movement_state(self):
         if self.is_front_obstacle() and not self.turn:
@@ -147,11 +156,11 @@ class ExploreForwardServer(Node):
             
             # we can definitely save time by changing the direction we rotate.
             self.turn_start_time = time.time()
-            deg_to_turn = self.find_direction_to_turn_to_zone_based()
-            time_to_turn = abs(self.find_direction_to_turn_to_zone_based() / self.ANG_VEL)
+            turn_angle = clamp_turn_angle(self.find_direction_to_turn_to_zone_based())
+            time_to_turn = abs(turn_angle / self.ANG_VEL)
             self.turn_duration = time_to_turn # ang_vel = radians/seconds => seconds = radians / ang_vel
 
-            self.get_logger().info(f"Turning {deg_to_turn} rads - turning for {time_to_turn} seconds to achieve this")
+            #self.get_logger().info(f"Turning {math.degrees(turn_angle)}° - turning for {time_to_turn} seconds {'anti' if not self.turn_clockwise else ''}clockwise to achieve this")
         elif self.turn and (time.time() - self.turn_start_time > self.turn_duration):
             self.turn = False
             self.move_forward = True
@@ -162,7 +171,6 @@ class ExploreForwardServer(Node):
         feedback_msg = ExploreForward.Feedback()
         result = ExploreForward.Result()
         
-        self.zones_visited.clear()
         start_time = time.time()
         
         while not self.scan_received and time.time() - start_time < 5.0:
@@ -179,16 +187,17 @@ class ExploreForwardServer(Node):
             if self.scan_received:
                 self.send_velocity_commands()
             feedback_msg.time_elapsed = time.time() - start_time
-            feedback_msg.current_zones = len(self.zones_visited)
+            feedback_msg.current_zones = len(
+                list(filter(lambda k : self.zones_visited[k], self.zones_visited.keys())))
             feedback_msg.current_state = "turning" if self.turn else "moving forward"
             goal_handle.publish_feedback(feedback_msg)
             time.sleep(0.1)
         
         self.stop_robot()
         result.total_time = exploration_time
-        result.zones_visited = len(self.zones_visited)
+        result.zones_visited = len(list(filter(lambda k : self.zones_visited[k], self.zones_visited.keys())))
         goal_handle.succeed()
-        self.get_logger().info(f'Exploration completed! Visited {len(self.zones_visited)} zones')
+        self.get_logger().info(f'Exploration completed! Visited {len(list(filter(lambda k : self.zones_visited[k], self.zones_visited.keys())))} zones')
         return result
     
     def send_velocity_commands(self):
@@ -196,7 +205,7 @@ class ExploreForwardServer(Node):
         fwd_vel = 0.4
         
         if self.turn:
-            vel_cmd.linear.x, vel_cmd.angular.z = 0.0, self.ANG_VEL 
+            vel_cmd.linear.x, vel_cmd.angular.z = 0.0, self.ANG_VEL if self.clockwise > 0 else -self.ANG_VEL
         elif self.move_forward:
             vel_cmd.linear.x, vel_cmd.angular.z = fwd_vel, 0.0
         
@@ -207,7 +216,18 @@ class ExploreForwardServer(Node):
 
 # x,y of point, x,y of centre of square, side length of square
 def is_in_square(x, y, ox, oy, sl):
-    return ox + (sl/2) < x < ox - (sl/2) and oy + (sl/2) < y < oy - (sl/2)
+    return ((ox + (sl/2) < x < ox - (sl/2)) or (ox - (sl/2) < x < ox + (sl/2))) and ((oy + (sl/2) < y < oy - (sl/2)) or (oy - (sl/2) < y < oy + (sl/2)))
+
+def is_in_circle(x, y, ox, oy, r):
+    return pow((x - ox), 2) + pow(y - oy, 2) < pow(r, 2)
+
+def clamp_turn_angle(angle):
+    if angle < 0:
+        angle = min(angle, math.radians(-20))
+    else:
+        angle = max(angle, math.radians(20))
+    return angle
+    
 
 def main(args=None):
     rclpy.init(args=args)
