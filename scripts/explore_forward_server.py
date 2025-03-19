@@ -72,7 +72,7 @@ class ExploreForwardServer(Node):
 
         # coordinates, from origin, in metres, of the centres of all of the zones
         # top row + bottom row + sides   1 2 3 4                      5              6                   7  8  9  10                                11          12   
-        zones : list = [(x/10, 1.5) for x in range(-15, 20, 10)] + [(1.5, 0.5), (1.5, -0.5)] + [(x/10, -1.5) for x in range(15, -20, -10) ] + [(-1.5, -0.5), (-1.5, 0.5)]
+        zones : list = [(-1.5, y/10) for y in range(-15, 20, 10)] + [(-0.5, 1.5), (0.5, 1.5)] + [(1.5, y/10) for y in range(15, -20, -10) ] + [(0.5, -1.5), (-0.5, -1.5)]
         self.zones_visited = dict(zip(zones, [False] * len(zones))) # dict with zones as keys and bools as values
         self.get_logger().info(f"self.zones_visited is initialised as {self.zones_visited}")
 
@@ -80,12 +80,13 @@ class ExploreForwardServer(Node):
         
         self.get_logger().info('Exploration Action Server is ready!')
 
-    def odom_callback(self, msg):
+    def odom_callback(self, msg : Odometry):
         self.current_x = msg.pose.pose.position.x
         self.current_y = msg.pose.pose.position.y
+        _, _, self.current_yaw = get_euler_from_quaternion(msg.pose.pose.orientation)
 
         current_square = list(filter(lambda k : is_in_circle( # using the circle instead of the square to make sure we fully enter the square
-            self.current_x, self.current_y, *k, 1 # the star is an unpacking operator since k is a tuple
+            self.current_x, self.current_y, *k, 0.5 # the star is an unpacking operator since k is a tuple
         ), self.zones_visited.keys()))
 
         if current_square != [] and not self.zones_visited[current_square[0]]:
@@ -94,7 +95,6 @@ class ExploreForwardServer(Node):
             self.zones_visited[current_square] = True
 
     def laser_callback(self, msg):
-        self.scan_received = True
         # create segments, a list of 20 degree slices of our environment
         self.segments = []
         for angle in range(359, 0, -20): # count backwards so we scan clockwise
@@ -104,6 +104,7 @@ class ExploreForwardServer(Node):
         
         self.obstacles : list = list(map(lambda x: x < self.MIN_DISTANCE, self.segments)) # can we be smarter about minimum distance i.e. can it fit at the given distance?
         self.update_movement_state()
+        self.scan_received = True
     
     def zone_at_coords(self, coords):
         return list(self.zones_visited.keys()).index(coords) + 1
@@ -136,15 +137,17 @@ class ExploreForwardServer(Node):
         return angle
     
     def tan_angle_to_point(self, x, y): 
-        return (x - self.current_x) / (y - self.current_y)
+        return (y - self.current_y) / (x - self.current_x)
 
     def find_direction_to_turn_to_zone_based(self):
         unvisited = list(filter(lambda k: not self.zones_visited[k] ,self.zones_visited.keys()))
-        unvisited.sort(key=lambda k : abs(self.tan_angle_to_point(*k))) # abs it so the shortest turn (otherwise it will always turn the negativest)
+        unvisited.sort(key=lambda k : abs(-self.current_yaw - self.tan_angle_to_point(*k))) # abs it so the shortest turn (otherwise it will always turn the negativest)
+        self.get_logger().info(f"Unvisited list: {unvisited}")
         target = unvisited[0]
 
         self.get_logger().info(f"We are turning towards Zone {self.zone_at_coords(target)}")
-        angle = math.atan(self.tan_angle_to_point(target[0], target[1]))
+        self.get_logger().info(f"Current Yaw: {math.degrees(self.current_yaw)}, origin-point angle: {math.degrees(self.tan_angle_to_point(target[0], target[1]))}")
+        angle = math.atan(-self.current_yaw - self.tan_angle_to_point(target[0], target[1]))
         self.turn_clockwise = angle > 0
         return angle
     
@@ -156,11 +159,11 @@ class ExploreForwardServer(Node):
             
             # we can definitely save time by changing the direction we rotate.
             self.turn_start_time = time.time()
-            turn_angle = clamp_turn_angle(self.find_direction_to_turn_to_zone_based())
+            turn_angle = clamp_turn_angle(self.find_direction_to_turn_to_zone_based()) # remember to reclamp!!!!
             time_to_turn = abs(turn_angle / self.ANG_VEL)
             self.turn_duration = time_to_turn # ang_vel = radians/seconds => seconds = radians / ang_vel
 
-            #self.get_logger().info(f"Turning {math.degrees(turn_angle)}° - turning for {time_to_turn} seconds {'anti' if not self.turn_clockwise else ''}clockwise to achieve this")
+            self.get_logger().info(f"Turning {math.degrees(turn_angle)}° - turning for {time_to_turn} seconds {'anti' if not self.turn_clockwise else ''}clockwise to achieve this")
         elif self.turn and (time.time() - self.turn_start_time > self.turn_duration):
             self.turn = False
             self.move_forward = True
@@ -173,9 +176,25 @@ class ExploreForwardServer(Node):
         
         start_time = time.time()
         
+        # reinitialise zones_visited
+        # coordinates, from origin, in metres, of the centres of all of the zones
+        # top row + bottom row + sides   1 2 3 4                      5              6                   7  8  9  10                                11          12   
+        zones : list = [(-1.5, y/10) for y in range(-15, 20, 10)] + [(-0.5, 1.5), (0.5, 1.5)] + [(1.5, y/10) for y in range(15, -20, -10) ] + [(0.5, -1.5), (-0.5, -1.5)]
+        self.zones_visited = dict(zip(zones, [False] * len(zones))) # dict with zones as keys and bools as values
+
         while not self.scan_received and time.time() - start_time < 5.0:
             self.send_velocity_commands()
             time.sleep(0.1)
+
+
+        #make the robot turn itself to 0
+        vel_cmd = Twist()
+        vel_cmd.angular.z = self.ANG_VEL
+        self.vel_pub.publish(vel_cmd)
+        #while not within 4° of zero
+        while not (-0.0174533*2 < self.current_yaw < 0.0174533*2):
+            time.sleep(0.1) # 100ms
+        self.vel_pub.publish(Twist())
         
         while (time.time() - start_time) < exploration_time:
             if goal_handle.is_cancel_requested:
@@ -214,6 +233,8 @@ class ExploreForwardServer(Node):
     def stop_robot(self):
         self.vel_pub.publish(Twist())
 
+## static methods ##
+
 # x,y of point, x,y of centre of square, side length of square
 def is_in_square(x, y, ox, oy, sl):
     return ((ox + (sl/2) < x < ox - (sl/2)) or (ox - (sl/2) < x < ox + (sl/2))) and ((oy + (sl/2) < y < oy - (sl/2)) or (oy - (sl/2) < y < oy + (sl/2)))
@@ -227,6 +248,20 @@ def clamp_turn_angle(angle):
     else:
         angle = max(angle, math.radians(20))
     return angle
+
+def get_euler_from_quaternion(quat):
+    """ Convert quaternion to Euler angles """
+    x, y, z, w = quat.x, quat.y, quat.z, quat.w
+    sinr_cosp = 2 * (w * x + y * z)
+    cosr_cosp = 1 - 2 * (x * x + y * y)
+    roll = math.atan2(sinr_cosp, cosr_cosp)
+    sinp = 2 * (w * y - z * x)
+    pitch = math.asin(sinp) if abs(sinp) <= 1 else math.copysign(math.pi / 2, sinp)
+    siny_cosp = 2 * (w * z + x * y)
+    cosy_cosp = 1 - 2 * (y * y + z * z)
+    yaw = math.atan2(siny_cosp, cosy_cosp)
+    return roll, pitch, yaw
+
     
 
 def main(args=None):
