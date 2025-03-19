@@ -12,6 +12,8 @@ from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import LaserScan
 
+from itertools import takewhile, dropwhile
+
 import math
 import random
 import time
@@ -58,6 +60,7 @@ class ExploreForwardServer(Node):
         self.right_obstacle = False
 
         self.MIN_DISTANCE = 0.6
+        self.MINIMUM_SAFE_TURN = math.radians(20)
         self.ANG_VEL = 0.8
 
         self.turn_duration = 0.0
@@ -69,7 +72,7 @@ class ExploreForwardServer(Node):
         
         self.ARENA_SIZE = 4.0
         self.ZONE_SIZE = 1.0
-
+        
         # coordinates, from origin, in metres, of the centres of all of the zones
         # top row + bottom row + sides   1 2 3 4                      5              6                   7  8  9  10                                11          12   
         zones : list = [(-1.5, y/10) for y in range(-15, 20, 10)] + [(-0.5, 1.5), (0.5, 1.5)] + [(1.5, y/10) for y in range(15, -20, -10) ] + [(0.5, -1.5), (-0.5, -1.5)]
@@ -127,8 +130,8 @@ class ExploreForwardServer(Node):
     def find_direction_to_turn_to(self):
         angle = None
         for i in range(len(self.obstacles)):
-            if not self.obstacles[i]: # currently we just take the first clear direction. we could rewrite this to bias
-                angle = i * 20 + 10   # towards a region we haven't visited yet, or even just choose a random
+            if not self.obstacles[i]:   
+                angle = i * 20 + 10   
                 break
         if angle is None:
             self.get_logger().fatal("There is no clear way for us to turn!!!")
@@ -149,14 +152,27 @@ class ExploreForwardServer(Node):
         return (y - self.current_y) / (x - self.current_x)
 
     def find_direction_to_turn_to_zone_based(self):
-        unvisited = list(filter(lambda k: not self.zones_visited[k] ,self.zones_visited.keys()))
-        unvisited.sort(key=lambda k : abs(math.acos(self.cos_angle_to_point(*k)))) # abs it so the shortest turn (otherwise it will always turn the negativest)
-        self.get_logger().info(f"Unvisited list: {unvisited}")
-        target = unvisited[0]
 
-        self.get_logger().info(f"We are turning towards Zone {self.zone_at_coords(target)}")
-        self.get_logger().info(f"Current Yaw: {math.degrees(self.current_yaw)}, origin-point angle: {math.degrees(self.tan_angle_to_point(target[0], target[1]))}")
-        angle = math.acos(self.cos_angle_to_point(target[0], target[1]))
+        point_to_angle = lambda k : abs(math.acos(self.cos_angle_to_point(*k)))
+
+        unvisited = list(filter(lambda k: not self.zones_visited[k] ,self.zones_visited.keys()))
+        unvisited.sort(key=point_to_angle) # abs it so the shortest turn (otherwise it will always turn the negativest)
+
+        unsafe = list(takewhile(lambda p: point_to_angle(p) < self.MINIMUM_SAFE_TURN, unvisited))
+        safe = list(dropwhile(lambda p: point_to_angle(p) < self.MINIMUM_SAFE_TURN, unvisited))
+        self.get_logger().info(f"Safe turns: {list(map(self.zone_at_coords, safe))}, unsafe turns: {list(map(self.zone_at_coords, unsafe))}")
+        if any(safe):
+            target = (safe)[0] if point_to_angle(safe[0]) < self.MINIMUM_SAFE_TURN * 2.5 else None
+        else:
+            target = (unsafe)[-1] # maybe clamp to 20? we'll see
+        
+        if target is not None:
+            self.get_logger().info(f"We are turning towards Zone {self.zone_at_coords(target)}")
+            self.get_logger().info(f"Current Yaw: {math.degrees(self.current_yaw)}, origin-point angle: {math.degrees(self.tan_angle_to_point(target[0], target[1]))}")
+            angle = math.acos(self.cos_angle_to_point(target[0], target[1])) 
+        else:
+            self.get_logger().info("Making minimum safe turn")
+            angle = math.copysign(self.MINIMUM_SAFE_TURN, point_to_angle(safe[0]))
         self.turn_clockwise = angle > 0
         return angle
     
