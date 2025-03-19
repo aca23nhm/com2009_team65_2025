@@ -115,6 +115,15 @@ class ExploreForwardServer(Node):
     def is_front_obstacle(self): # is there an obstacle in the front 40 degrees?
         return self.obstacles[0] or self.obstacles[-1] # again we can maybe smarten this up to allow the robot to slip through smaller gaps.
 
+    # find the dot product of the vector from the robot to the point, and the unit vector of our current orientation
+    def cos_angle_to_point(self, target_x, target_y):
+        delta_x = target_x - self.current_x
+        delta_y = target_y - self.current_y
+        dot_prod = delta_x * math.cos(self.current_yaw) + delta_y * math.sin(self.current_yaw)
+        cos_th = dot_prod / math.sqrt( # cosθ = a · b / |a||b|, and sin²θ + cos²θ = 1
+            math.pow(delta_x, 2) + math.pow(delta_y, 2))
+        return cos_th
+
     def find_direction_to_turn_to(self):
         angle = None
         for i in range(len(self.obstacles)):
@@ -141,13 +150,13 @@ class ExploreForwardServer(Node):
 
     def find_direction_to_turn_to_zone_based(self):
         unvisited = list(filter(lambda k: not self.zones_visited[k] ,self.zones_visited.keys()))
-        unvisited.sort(key=lambda k : abs(-self.current_yaw - self.tan_angle_to_point(*k))) # abs it so the shortest turn (otherwise it will always turn the negativest)
+        unvisited.sort(key=lambda k : abs(math.acos(self.cos_angle_to_point(*k)))) # abs it so the shortest turn (otherwise it will always turn the negativest)
         self.get_logger().info(f"Unvisited list: {unvisited}")
         target = unvisited[0]
 
         self.get_logger().info(f"We are turning towards Zone {self.zone_at_coords(target)}")
         self.get_logger().info(f"Current Yaw: {math.degrees(self.current_yaw)}, origin-point angle: {math.degrees(self.tan_angle_to_point(target[0], target[1]))}")
-        angle = math.atan(-self.current_yaw - self.tan_angle_to_point(target[0], target[1]))
+        angle = math.acos(self.cos_angle_to_point(target[0], target[1]))
         self.turn_clockwise = angle > 0
         return angle
     
