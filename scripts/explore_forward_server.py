@@ -30,11 +30,6 @@ class ExploreForwardServer(Node):
             callback_group=self.callback_group
         )
         
-        self.move_forward = True
-        self.turn = False
-        self.turn_clockwise = False
-        self.stop = False
-        
         self.vel_pub = self.create_publisher(Twist, 'cmd_vel', 10)
         
         self.laser_sub = self.create_subscription(
@@ -53,18 +48,17 @@ class ExploreForwardServer(Node):
             callback_group=self.callback_group
         )
         
-        self.front_obstacle = False
-        self.left_obstacle = False
-        self.right_obstacle = False
         self.min_distance = 0.6
-        self.turn_duration = 0.0
-        self.turn_start_time = 0.0
         self.zones_visited = set()
         self.current_x = 0.0
         self.current_y = 0.0
         
         self.arena_size = 4.0
         self.zone_size = 1.0
+        
+        self.state = "moving_forward"
+        self.turn_start_time = 0.0
+        self.turn_duration = 0.0
         
         self.scan_received = False
         
@@ -76,11 +70,17 @@ class ExploreForwardServer(Node):
         left_ranges = [msg.ranges[i] for i in self.angle_to_index(range(50, 91), msg) if not math.isnan(msg.ranges[i]) and not math.isinf(msg.ranges[i])]
         right_ranges = [msg.ranges[i] for i in self.angle_to_index(range(-90, -49), msg) if not math.isnan(msg.ranges[i]) and not math.isinf(msg.ranges[i])]
         
-        self.front_obstacle = min(front_ranges, default=10.0) < self.min_distance
-        self.left_obstacle = min(left_ranges, default=10.0) < self.min_distance
-        self.right_obstacle = min(right_ranges, default=10.0) < self.min_distance
+        front_obstacle = min(front_ranges, default=10.0) < self.min_distance
+        left_obstacle = min(left_ranges, default=10.0) < self.min_distance
+        right_obstacle = min(right_ranges, default=10.0) < self.min_distance
         
-        self.update_movement_state()
+        if front_obstacle:
+            self.state = "turning"
+            self.turn_start_time = time.time()
+            self.turn_duration = random.uniform(1.0, 2.0)
+            self.turn_clockwise = left_obstacle or (not left_obstacle and right_obstacle)
+        elif self.state == "turning" and (time.time() - self.turn_start_time > self.turn_duration):
+            self.state = "moving_forward"
     
     def angle_to_index(self, angles, msg):
         return [int((math.radians(angle) - msg.angle_min) / msg.angle_increment) for angle in angles if 0 <= int((math.radians(angle) - msg.angle_min) / msg.angle_increment) < len(msg.ranges)]
@@ -95,17 +95,6 @@ class ExploreForwardServer(Node):
         if zone_x in {0, 3} or zone_y in {0, 3}:
             self.zones_visited.add((zone_x, zone_y))
             self.get_logger().info(f'Visited outer zone: ({zone_x}, {zone_y})')
-    
-    def update_movement_state(self):
-        if self.front_obstacle:
-            self.move_forward = False
-            self.turn = True
-            self.turn_clockwise = self.left_obstacle
-            self.turn_start_time = time.time()
-            self.turn_duration = random.uniform(1.0, 2.0)
-        elif self.turn and (time.time() - self.turn_start_time > self.turn_duration):
-            self.turn = False
-            self.move_forward = True
     
     def execute_callback(self, goal_handle):
         self.get_logger().info('Executing exploration...')
@@ -130,7 +119,7 @@ class ExploreForwardServer(Node):
             self.send_velocity_commands()
             feedback_msg.time_elapsed = time.time() - start_time
             feedback_msg.current_zones = len(self.zones_visited)
-            feedback_msg.current_state = "turning" if self.turn else "moving forward"
+            feedback_msg.current_state = self.state
             goal_handle.publish_feedback(feedback_msg)
             time.sleep(0.1)
         
@@ -145,15 +134,16 @@ class ExploreForwardServer(Node):
         vel_cmd = Twist()
         fwd_vel, ang_vel = 0.4, 0.4
         
-        if self.turn:
-            vel_cmd.linear.x, vel_cmd.angular.z = 0.0, ang_vel if not self.turn_clockwise else -ang_vel
-        elif self.move_forward:
-            vel_cmd.linear.x, vel_cmd.angular.z = fwd_vel, 0.0
+        if self.state == "turning":
+            vel_cmd.angular.z = -ang_vel if self.turn_clockwise else ang_vel
+        else:
+            vel_cmd.linear.x = fwd_vel
         
         self.vel_pub.publish(vel_cmd)
     
     def stop_robot(self):
         self.vel_pub.publish(Twist())
+
 
 def main(args=None):
     rclpy.init(args=args)
