@@ -62,6 +62,7 @@ class ExploreForwardServer(Node):
         self.MIN_DISTANCE = 0.6
         self.MINIMUM_SAFE_TURN = math.radians(20)
         self.ANG_VEL = 0.8
+        self.FWD_VEL = 0.26
 
         self.turn_duration = 0.0
         self.turn_start_time = 0.0
@@ -246,7 +247,7 @@ class ExploreForwardServer(Node):
     
     def send_velocity_commands(self):
         vel_cmd = Twist()
-        fwd_vel = 0.4
+        fwd_vel = self.FWD_VEL
         
         if self.turn:
             vel_cmd.linear.x, vel_cmd.angular.z = 0.0, self.ANG_VEL if self.clockwise > 0 else -self.ANG_VEL
