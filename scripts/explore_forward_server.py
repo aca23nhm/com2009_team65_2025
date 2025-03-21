@@ -206,55 +206,53 @@ class ExploreForwardServer(Node):
         exploration_time = goal_handle.request.exploration_time
         feedback_msg = ExploreForward.Feedback()
         result = ExploreForward.Result()
-        
+
         start_time = time.time()
-        
+
         # Reinitialize zones_visited and target_zones
         zones: list = [(-1.5, y/10) for y in range(-15, 20, 10)] + [(-0.5, 1.5), (0.5, 1.5)] + [(1.5, y/10) for y in range(15, -20, -10)] + [(0.5, -1.5), (-0.5, -1.5)]
         self.zones_visited = dict(zip(zones, [False] * len(zones)))
-        
+
         # Initialize target zones to focus on outer zones first
-        outer_zones = []
-        for zone in zones:
-            # Identify outer zones based on their coordinates
-            if abs(zone[0]) == 1.5 or abs(zone[1]) == 1.5:
-                outer_zones.append(zone)
-        
-        # Set the target zones (prioritize outer zones first)
+        outer_zones = [zone for zone in zones if abs(zone[0]) == 1.5 or abs(zone[1]) == 1.5]
         self.target_zones = outer_zones + [z for z in zones if z not in outer_zones]
         self.get_logger().info(f"Target zones initialized with {len(self.target_zones)} zones, prioritizing outer zones")
 
+        # Wait for scan data for up to 5 seconds before moving
         while not self.scan_received and time.time() - start_time < 5.0:
             self.send_velocity_commands()
             time.sleep(0.1)
-        
-        while (time.time() - start_time) < min(exploration_time, 90):  # Stop after 90 seconds
+
+        # Main exploration loop (up to 90 seconds or user-defined time)
+        while (time.time() - start_time) < min(exploration_time, 90):
             if goal_handle.is_cancel_requested:
                 goal_handle.canceled()
                 self.get_logger().info('Exploration goal canceled')
                 self.stop_robot()
                 return result
-            
+
             if self.scan_received:
                 self.send_velocity_commands()
-            
+
+            # Update feedback
             feedback_msg.time_elapsed = time.time() - start_time
-            feedback_msg.current_zones = len(list(filter(lambda k: self.zones_visited[k], self.zones_visited.keys())))
+            feedback_msg.current_zones = sum(self.zones_visited.values())
             feedback_msg.current_state = "turning towards zone" if self.turn else "moving forward"
-            
+
             # Calculate percentage of target zones visited
             if self.target_zones:
                 completion = (1 - len(self.target_zones) / len(self.zones_visited)) * 100
                 self.get_logger().info(f"Exploration progress: {completion:.1f}% (Remaining: {len(self.target_zones)})")
             else:
                 self.get_logger().info("All target zones visited!")
-            
+
             goal_handle.publish_feedback(feedback_msg)
             time.sleep(0.1)
-        
+
+        # Stop the robot and return results
         self.stop_robot()
         result.total_time = float(min(exploration_time, 90))
-        result.zones_visited = len(list(filter(lambda k: self.zones_visited[k], self.zones_visited.keys())))
+        result.zones_visited = sum(self.zones_visited.values())
         goal_handle.succeed()
         self.get_logger().info(f'Exploration completed! Visited {result.zones_visited} zones')
         return result
