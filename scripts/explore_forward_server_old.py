@@ -67,7 +67,7 @@ class ExploreForwardServer(Node):
         self.turn_duration = 0.0
         self.turn_start_time = 0.0
         self.clockwise = True
-        self.zones_visited = set()
+
         self.current_x = 0.0
         self.current_y = 0.0
         self.current_yaw = 0
@@ -207,7 +207,7 @@ class ExploreForwardServer(Node):
         exploration_time = goal_handle.request.exploration_time
         feedback_msg = ExploreForward.Feedback()
         result = ExploreForward.Result()
-
+        
         start_time = time.time()
         
         # reinitialise zones_visited
@@ -218,19 +218,17 @@ class ExploreForwardServer(Node):
         self.zones_visited = dict(zip(zones, [False] * len(zones))) # dict with zones as keys and bools as values
 
 
-        # Wait for scan data for up to 5 seconds before moving
         while not self.scan_received and time.time() - start_time < 5.0:
             self.send_velocity_commands()
             time.sleep(0.1)
 
-        # Main exploration loop (up to 90 seconds or user-defined time)
-        while (time.time() - start_time) < min(exploration_time, 90):
+        while (time.time() - start_time) < exploration_time:
             if goal_handle.is_cancel_requested:
                 goal_handle.canceled()
                 self.get_logger().info('Exploration goal canceled')
                 self.stop_robot()
                 return result
-
+            
             if self.scan_received:
                 self.send_velocity_commands()
             feedback_msg.time_elapsed = time.time() - start_time
@@ -239,8 +237,7 @@ class ExploreForwardServer(Node):
             feedback_msg.current_state = "turning" if self.turn else "moving forward"
             goal_handle.publish_feedback(feedback_msg)
             time.sleep(0.1)
-
-        # Stop the robot and return results
+        
         self.stop_robot()
         result.total_time = exploration_time
         result.zones_visited = len(list(filter(lambda k : self.zones_visited[k], self.zones_visited.keys())))
@@ -294,17 +291,28 @@ def get_euler_from_quaternion(quat):
     
 
 def main(args=None):
-    rclpy.init(args=args)
-    exploration_server = ExploreForwardServer()
-    executor = MultiThreadedExecutor()
-    executor.add_node(exploration_server)
     try:
-        executor.spin()
-    except KeyboardInterrupt:
-        pass
-    finally:
-        exploration_server.destroy_node()
-        rclpy.shutdown()
+        # Initialize ROS 2
+        rclpy.init(args=args)
 
-if __name__ == '__main__':
+        # Create and initialize the server node
+        exploration_server = ExploreForwardServer()
+
+        # Create the executor to handle the server node
+        executor = MultiThreadedExecutor()
+        executor.add_node(exploration_server)
+
+        # Spin the executor, which will keep the server alive
+        executor.spin()
+
+    except KeyboardInterrupt:
+        print("Keyboard interrupt received, shutting down...")
+
+    finally:
+        # Ensure the node is destroyed and shutdown is only called once
+        if rclpy.ok():
+            exploration_server.destroy_node()
+            rclpy.shutdown()
+
+if __name__ == "__main__":
     main()
