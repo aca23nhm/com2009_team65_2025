@@ -59,7 +59,7 @@ class ExploreForwardServer(Node):
         self.left_obstacle = False
         self.right_obstacle = False
 
-        self.MIN_DISTANCE = 0.6
+        self.MIN_DISTANCE = 0.5
         self.MINIMUM_SAFE_TURN = math.radians(20)
         self.ANG_VEL = 0.8
 
@@ -97,12 +97,15 @@ class ExploreForwardServer(Node):
             self.get_logger().info(f"We just visited Zone {self.zone_at_coords((current_square[0], current_square[1]))}!")
             self.zones_visited[current_square] = True
 
+    def mean_of_lowest_5(self, arr):
+        return sum(sorted(arr)[0:5]) / 5 
+    
     def laser_callback(self, msg):
         # create segments, a list of 20 degree slices of our environment
         self.segments = []
         for angle in range(359, 0, -20): # count backwards so we scan clockwise
             self.segments.append(
-                min([msg.ranges[i] for i in range(angle-19, angle) if not math.isnan(msg.ranges[i])], default=math.inf)
+                self.mean_of_lowest_5( ([msg.ranges[i] for i in range(angle-19, angle) if not math.isnan(msg.ranges[i])]) )
             )
         
         self.obstacles : list = list(map(lambda x: x < self.MIN_DISTANCE, self.segments)) # can we be smarter about minimum distance i.e. can it fit at the given distance?
