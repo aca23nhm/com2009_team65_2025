@@ -1,0 +1,11 @@
+# Goal
+float32 exploration_time  # Time in seconds to explore
+---
+# Result
+float32 total_time        # Total time spent exploring
+int32 zones_visited       # Number of zones visited
+---
+# Feedback
+float32 time_elapsed      # Current exploration time
+int32 current_zones       # Current number of zones visited
+string current_state      # Current robot state (e.g., "moving forward", "turning")

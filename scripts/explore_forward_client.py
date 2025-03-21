@@ -18,25 +18,21 @@ class ExploreServerClient(Node):
             'exploration'
         )
         
-        # Define outer zones of the 4x4 arena
-        self.outer_zones = set([
-            (0, 0), (0, 1), (0, 2), (0, 3),
-            (1, 0), (1, 3), (2, 0), (2, 3),
-            (3, 0), (3, 1), (3, 2), (3, 3)
-        ])
-    
+        # Define outer zones of the 4x4 arena - this matches the server's zone mapping
+        self.outer_zones = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]  # All zones on the perimeter
+        
     def send_goal(self):
-        """Send exploration goal to visit all outer zones"""
+        """Send exploration goal to visit all outer zones efficiently"""
         # Wait for server to be available
         self.get_logger().info('Waiting for exploration action server...')
         self._action_client.wait_for_server()
         
         # Create goal message
         goal_msg = ExploreForward.Goal()
-        goal_msg.exploration_time = 90.0  # Use a fixed time for the exploration
+        goal_msg.exploration_time = 120.0  # Increased time for thorough exploration
         
         # Set the goal to visit the outer zones
-        self.get_logger().info('Sending exploration goal: Visit all outer zones')
+        self.get_logger().info('Sending exploration goal: Visit all outer zones efficiently')
         self._send_goal_future = self._action_client.send_goal_async(
             goal_msg,
             feedback_callback=self.feedback_callback
@@ -64,7 +60,11 @@ class ExploreServerClient(Node):
         result = future.result().result
         self.get_logger().info(f'Exploration completed!')
         self.get_logger().info(f'Time spent: {result.total_time:.2f} seconds')
-        self.get_logger().info(f'Zones visited: {result.zones_visited}')
+        self.get_logger().info(f'Total zones visited: {result.zones_visited}')
+        
+        # Calculate exploration efficiency
+        efficiency = result.zones_visited / result.total_time
+        self.get_logger().info(f'Exploration efficiency: {efficiency:.4f} zones/second')
         
         # Shutdown after receiving result
         rclpy.shutdown()
@@ -72,9 +72,11 @@ class ExploreServerClient(Node):
     def feedback_callback(self, feedback_msg):
         """Callback for feedback during exploration"""
         feedback = feedback_msg.feedback
+        progress = (feedback.current_zones / 12) * 100  # Assuming 12 total zones
+        
         self.get_logger().info(f'Feedback: Time: {feedback.time_elapsed:.2f}s, '
-                               f'Zones: {feedback.current_zones}, '
-                               f'State: {feedback.current_state}')
+                              f'Zones: {feedback.current_zones}/12 ({progress:.1f}%), '
+                              f'State: {feedback.current_state}')
 
 
 def main(args=None):
