@@ -271,7 +271,7 @@ class ExploreForwardServer(Node):
     
     def send_velocity_commands(self):
         vel_cmd = Twist()
-        fwd_vel = 0.4
+        fwd_vel = 0.26
         
         if self.turn:
             vel_cmd.linear.x = -0.05
