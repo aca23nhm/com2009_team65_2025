@@ -89,8 +89,12 @@ class ExploreForwardServer(Node):
         self.current_y = msg.pose.pose.position.y
         _, _, self.current_yaw = get_euler_from_quaternion(msg.pose.pose.orientation)
 
-        current_square = list(filter(lambda k : is_in_circle( # using the circle instead of the square to make sure we fully enter the square
-            self.current_x, self.current_y, *k, 0.5 # the star is an unpacking operator since k is a tuple
+        # current_square = list(filter(lambda k : is_in_circle( # using the circle instead of the square to make sure we fully enter the square
+        #     self.current_x, self.current_y, *k, 0.5 # the star is an unpacking operator since k is a tuple
+        # ), self.zones_visited.keys()))
+
+        current_square = list(filter(lambda k : is_in_square( # using 0.75 as the square length to ensure only a full entry is counted
+            self.current_x, self.current_y, *k, 0.75 # the star is an unpacking operator since k is a tuple
         ), self.zones_visited.keys()))
 
         if current_square != [] and not self.zones_visited[current_square[0]]:
@@ -212,7 +216,7 @@ class ExploreForwardServer(Node):
             self.send_velocity_commands()
             time.sleep(0.1)
 
-
+        """ this code seems to not solve any issues and just wastes time
         #make the robot turn itself to 0
         vel_cmd = Twist()
         vel_cmd.angular.z = self.ANG_VEL
@@ -221,7 +225,7 @@ class ExploreForwardServer(Node):
         while not (-0.0174533*2 < self.current_yaw < 0.0174533*2):
             time.sleep(0.1) # 100ms
         self.vel_pub.publish(Twist())
-        
+        """       
         while (time.time() - start_time) < exploration_time:
             if goal_handle.is_cancel_requested:
                 goal_handle.canceled()
