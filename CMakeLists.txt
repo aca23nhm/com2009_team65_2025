@@ -39,8 +39,8 @@ ament_python_install_package(${PROJECT_NAME}_modules)
 
 # Install Python executables
 install(PROGRAMS
-  scripts/avoiding_obstacles_client.py
-  scripts/avoiding_obstacles_server.py
+  # scripts/avoiding_obstacles_client.py
+  # scripts/avoiding_obstacles_server.py
   scripts/explore_forward_server.py
   scripts/explore_forward_client.py
   scripts/velocity_controller.py
