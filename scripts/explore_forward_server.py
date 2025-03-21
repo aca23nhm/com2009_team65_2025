@@ -48,7 +48,7 @@ class ExploreForwardServer(Node):
             callback_group=self.callback_group
         )
         
-        self.min_distance = 0.6
+        self.min_distance = 0.7
         self.zones_visited = set()
         self.current_x = 0.0
         self.current_y = 0.0
@@ -166,7 +166,7 @@ class ExploreForwardServer(Node):
     
     def send_velocity_commands(self):
         vel_cmd = Twist()
-        fwd_vel, ang_vel = 0.5, 0.5
+        fwd_vel, ang_vel = 0.5, 0.4
         
         if self.state == "turning":
             vel_cmd.linear.x = -0.05
