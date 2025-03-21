@@ -1,0 +1,11 @@
+We can have Explore as an action running like a brain, which fires sub-actions:
+    - normal behaviour is to move in a straight line towards the goal:
+        - if it encounters an obstacle, this action cancels, and sends a message telling the brain to activate the avoidance action
+            - the avoidance action turns around on the spot until it is clear of the obstacle
+                - if it turns 360 degrees, halt and catch fire
+            - otherwise, we need to activate a sidestep - move in the new direction until we are clear of the obstacle
+                - we could use the knowledge of how far we turned to know where the obstacle is, but i think it would suffice to just keep looking in the direction of the goal?
+                - the system needs to be able to activate the avoidance action recursively
+                    - alternate directions of rotation so we are usually turning towards the goal?
+        - once we are clear of the obstacle, turn back towards the goal and activate the move-towards-goal action again
+    - once we reach the goal, set next goal and repeat.

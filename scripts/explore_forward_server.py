@@ -227,16 +227,6 @@ class ExploreForwardServer(Node):
         while not self.scan_received and time.time() - start_time < 5.0:
             self.send_velocity_commands()
             time.sleep(0.1)
-
-        # Make the robot turn itself to 0
-        vel_cmd = Twist()
-        vel_cmd.angular.z = self.ANG_VEL
-        self.vel_pub.publish(vel_cmd)
-        
-        # While not within 4° of zero
-        while not (-0.0174533*2 < self.current_yaw < 0.0174533*2):
-            time.sleep(0.1)  # 100ms
-        self.vel_pub.publish(Twist())
         
         while (time.time() - start_time) < min(exploration_time, 90):  # Stop after 90 seconds
             if goal_handle.is_cancel_requested:
