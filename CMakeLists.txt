@@ -15,6 +15,11 @@ find_package(ament_cmake REQUIRED)
 find_package(ament_cmake_python REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclpy REQUIRED)
+find_package(rosidl_default_generators REQUIRED)
+rosidl_generate_interfaces(${PROJECT_NAME}
+  "action/ExploreForward.action" 
+  "action/AvoidingObstacles.action"
+)
 
 # Include Cpp "include" directory
 include_directories(include)
@@ -34,9 +39,11 @@ ament_python_install_package(${PROJECT_NAME}_modules)
 
 # Install Python executables
 install(PROGRAMS
-  scripts/velocity_controller.py
+  scripts/avoiding_obstacles_client.py
+  scripts/avoiding_obstacles_server.py
   scripts/explore_forward_server.py
   scripts/explore_forward_client.py
+  scripts/velocity_controller.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
