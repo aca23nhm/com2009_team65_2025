@@ -67,7 +67,7 @@ class ExploreForwardServer(Node):
         self.turn_duration = 0.0
         self.turn_start_time = 0.0
         self.clockwise = True
-
+        self.zones_visited = set()
         self.current_x = 0.0
         self.current_y = 0.0
         self.current_yaw = 0
@@ -291,28 +291,17 @@ def get_euler_from_quaternion(quat):
     
 
 def main(args=None):
+    rclpy.init(args=args)
+    exploration_server = ExploreForwardServer()
+    executor = MultiThreadedExecutor()
+    executor.add_node(exploration_server)
     try:
-        # Initialize ROS 2
-        rclpy.init(args=args)
-
-        # Create and initialize the server node
-        exploration_server = ExploreForwardServer()
-
-        # Create the executor to handle the server node
-        executor = MultiThreadedExecutor()
-        executor.add_node(exploration_server)
-
-        # Spin the executor, which will keep the server alive
         executor.spin()
-
     except KeyboardInterrupt:
-        print("Keyboard interrupt received, shutting down...")
-
+        pass
     finally:
-        # Ensure the node is destroyed and shutdown is only called once
-        if rclpy.ok():
-            exploration_server.destroy_node()
-            rclpy.shutdown()
+        exploration_server.destroy_node()
+        rclpy.shutdown()
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
