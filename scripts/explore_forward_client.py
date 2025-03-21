@@ -33,7 +33,7 @@ class ExploreServerClient(Node):
         
         # Create goal message
         goal_msg = ExploreForward.Goal()
-        goal_msg.exploration_time = 90.0  # Use a fixed time for the exploration
+        goal_msg.exploration_time = 190.0  # Use a fixed time for the exploration
         
         # Set the goal to visit the outer zones
         self.get_logger().info('Sending exploration goal: Visit all outer zones')

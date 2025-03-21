@@ -1,0 +1,7 @@
+{
+  "package_name": "com2009_team65_2025",
+  "non_idl_tuples": [
+    "/home/student/ros2_ws/src/com2009_team65_2025:action/ExploreForward.action",
+    "/home/student/ros2_ws/src/com2009_team65_2025:action/AvoidingObstacles.action"
+  ]
+}
