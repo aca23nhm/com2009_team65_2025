@@ -70,6 +70,7 @@ class ExploreForwardServer(Node):
         self.zones_visited = set()
         self.current_x = 0.0
         self.current_y = 0.0
+        self.current_yaw = 0
         
         self.ARENA_SIZE = 4.0
         self.ZONE_SIZE = 1.0
@@ -212,8 +213,10 @@ class ExploreForwardServer(Node):
         # reinitialise zones_visited
         # coordinates, from origin, in metres, of the centres of all of the zones
         # top row + bottom row + sides   1 2 3 4                      5              6                   7  8  9  10                                11          12   
-        zones : list = [(-1.5, y/10) for y in range(-15, 20, 10)] + [(-0.5, 1.5), (0.5, 1.5)] + [(1.5, y/10) for y in range(15, -20, -10) ] + [(0.5, -1.5), (-0.5, -1.5)]
+        zones : list = [(-1.5 + self.current_x, y/10 + self.current_y) for y in range(-15, 20, 10)] + [(-0.5 + self.current_x, 1.5 + self.current_y), (0.5 + self.current_x, 1.5 + self.current_y)] + [(1.5 + self.current_x, y/10 + self.current_y) for y in range(15, -20, -10) ] + [(0.5 + self.current_x, -1.5 + self.current_y), (-0.5 + self.current_x, -1.5 + self.current_y)]
+        
         self.zones_visited = dict(zip(zones, [False] * len(zones))) # dict with zones as keys and bools as values
+
 
         while not self.scan_received and time.time() - start_time < 5.0:
             self.send_velocity_commands()
