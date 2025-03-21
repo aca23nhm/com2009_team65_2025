@@ -59,7 +59,7 @@ class ExploreForwardServer(Node):
         self.left_obstacle = False
         self.right_obstacle = False
 
-        self.MIN_DISTANCE = 0.5
+        self.MIN_DISTANCE = 0.45
         self.MINIMUM_SAFE_TURN = math.radians(20)
         self.ANG_VEL = 0.8
         self.FWD_VEL = 0.26
