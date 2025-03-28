@@ -42,6 +42,7 @@ install(PROGRAMS
   scripts/explore_forward_server.py
   scripts/explore_forward_client.py
   scripts/velocity_controller.py
+  scripts/object_detection.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
