@@ -19,6 +19,8 @@ find_package(rosidl_default_generators REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "action/ExploreForward.action" 
   "action/AvoidingObstacles.action"
+  #"srv/DetectBeacon.srv"
+  #"action/Explore.action"
 )
 
 # Include Cpp "include" directory
@@ -43,6 +45,7 @@ install(PROGRAMS
   # scripts/avoiding_obstacles_server.py
   scripts/explore_forward_server.py
   scripts/explore_forward_client.py
+  scripts/object_detection.py
   scripts/velocity_controller.py
   DESTINATION lib/${PROJECT_NAME}
 )
