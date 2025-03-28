@@ -106,3 +106,15 @@ function colcon_package_source_powershell_script {
 }
 
 
+<<<<<<< HEAD
+=======
+# a powershell script is able to determine its own path
+# the prefix is two levels up from the package specific share directory
+$env:COLCON_CURRENT_PREFIX=(Get-Item $PSCommandPath).Directory.Parent.Parent.FullName
+
+colcon_package_source_powershell_script "$env:COLCON_CURRENT_PREFIX\share/com2009_team65_2025/hook/cmake_prefix_path.ps1"
+colcon_package_source_powershell_script "$env:COLCON_CURRENT_PREFIX\share/com2009_team65_2025/hook/ld_library_path_lib.ps1"
+colcon_package_source_powershell_script "$env:COLCON_CURRENT_PREFIX\share/com2009_team65_2025/local_setup.ps1"
+
+Remove-Item Env:\COLCON_CURRENT_PREFIX
+>>>>>>> origin/main
