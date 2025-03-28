@@ -1,0 +1,24 @@
+basic idea:
+
+robot will continuously capture SLAM data
+have the robot perform a loop:
+    - in the map, go toward the nearest unexplored area, pathfind there using A* algorithm:
+        - to prevent the robot running into the edge, the algo will work on an edit
+        of the map where there is a 'no-go area' which extends 25-30 cm from every wall
+        
+        - to prevent the robot getting stuck, maybe rerun the pathfinding algo every few seconds??
+
+
+
+
+big challenge:
+    - safe action area of 25 cm will result in the robot being unable to go through small passages
+    (as shown in the arena - some gaps are less than 45 cm but we need 50 or so)
+    - mitigation: code the robot's movement commands to move about its centre (where the LIDAR sensor is)
+    instead of where the wheels are
+    - this would reduce the required safe action area to below 20 cm, enough to fit through small gaps
+    - maybe, this would be contained in a sort of 'tight spaces mode'
+    - so for most of its run, it moves at high speed and rotates normally
+    - but then when traversing a tight space, it moves slowly (0.05 m/s) and is programmed to
+    rotate only when stopped - about its centre, not about its wheels.
+    - but how do you program it to rotate about its centre!!
