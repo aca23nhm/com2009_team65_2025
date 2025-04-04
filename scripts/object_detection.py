@@ -17,7 +17,7 @@ class ObjectDetection(Node):
 
         self.camera_sub = self.create_subscription(
             msg_type=Image,
-            topic="/camera/image_raw",
+            topic="/camera/color/image_raw",
             callback=self.camera_callback,
             qos_profile=10
         )
@@ -52,6 +52,7 @@ class ObjectDetection(Node):
             ]
 
             self.show_image(img=cropped_img, img_name="step2_cropping")
+            
 
             hsv_img = cv2.cvtColor(cropped_img, cv2.COLOR_BGR2HSV)
             lower_threshold_blue = (80, 100, 50) #blue
@@ -60,8 +61,11 @@ class ObjectDetection(Node):
             lower_threshold_red = (0, 100, 50) #red
             upper_threshold_red = (15, 255, 255)
 
-            lower_threshold = (0, 100, 50) #red
-            upper_threshold = (15, 255, 255)
+            lower_threshold_green = (74, 150, 50) 
+            upper_threshold_green = (90, 255, 255)
+
+            lower_threshold = (20 , 120, 50)
+            upper_threshold = (30,255,255)
 
             img_mask = cv2.inRange(hsv_img, lower_threshold, upper_threshold)
 
