@@ -54,8 +54,15 @@ class ObjectDetection(Node):
             self.show_image(img=cropped_img, img_name="step2_cropping")
 
             hsv_img = cv2.cvtColor(cropped_img, cv2.COLOR_BGR2HSV)
-            lower_threshold = (115, 225, 100)
-            upper_threshold = (130, 255, 255)
+            lower_threshold_blue = (80, 100, 50) #blue
+            upper_threshold_blue = (125, 255, 255)
+
+            lower_threshold_red = (0, 100, 50) #red
+            upper_threshold_red = (15, 255, 255)
+
+            lower_threshold = (0, 100, 50) #red
+            upper_threshold = (15, 255, 255)
+
             img_mask = cv2.inRange(hsv_img, lower_threshold, upper_threshold)
 
             self.show_image(img=img_mask, img_name="step3_image_mask")
