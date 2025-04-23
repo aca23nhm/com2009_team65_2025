@@ -8,8 +8,8 @@ import numpy as np
 
 class SLAMMapper(Node):
     def __init__(self):
-        super().__init__("beacon_detector")
-        
+        super().__init__("slam_mapper")
+
         self.subscription = self.create_subscription(OccupancyGrid, '/map', self.map_callback, 10)
 
     def map_callback(self, msg):
