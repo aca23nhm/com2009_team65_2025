@@ -1,17 +1,21 @@
-import launch
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, LogInfo, ExecuteProcess
+from launch.actions import DeclareLaunchArgument
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 def generate_launch_description():
+    target_colour_arg = DeclareLaunchArgument(
+        'target_colour',
+        description='The colour of the beacon to search for (yellow|red|green|blue).'
+    )
+
     return LaunchDescription([
-        # Launch the Exploration Server node
+        target_colour_arg,
         Node(
-            package='com2009_team65_2025',  # Replace with the actual package name
-            executable='object_detection.py',  # The name of the server executable
+            package='com2009_team65_2025',
+            executable='beacon_detector.py',
+            name='beacon_detector',
             output='screen',
-            #parameters=[{'param_name': 'param_value'}],  # Add any parameters if needed
-            #remappings=[('/camera/image_raw', '/your_camera_topic')]  # Remap topics if needed
-        ),
-        
+            parameters=[{'target_colour': LaunchConfiguration('target_colour')}]
+        )
     ])

@@ -53,7 +53,6 @@ class ObjectDetection(Node):
 
             self.show_image(img=cropped_img, img_name="step2_cropping")
             
-
             hsv_img = cv2.cvtColor(cropped_img, cv2.COLOR_BGR2HSV)
             lower_threshold_blue = (80, 100, 50) #blue
             upper_threshold_blue = (125, 255, 255)
