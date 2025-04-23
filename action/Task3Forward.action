@@ -1,0 +1,14 @@
+# Goal
+int32 duration
+---
+# Result
+int32 zones_visited
+int32 rooms_visited
+int32 incidents
+string beacon_colour
+---
+# Feedback
+int32 time_elapsed
+int32 current_zone
+int32 current_room
+int32 incidents
