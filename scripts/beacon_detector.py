@@ -7,6 +7,7 @@ from rcl_interfaces.msg import ParameterType
 import cv2
 from cv_bridge import CvBridge, CvBridgeError
 from sensor_msgs.msg import Image
+from geometry_msgs.msg import Twist
 
 import os
 from pathlib import Path
@@ -21,15 +22,28 @@ class BeaconDetector(Node):
         self.target_colour = self.get_parameter("target_colour").get_parameter_value().string_value
         
         self.camera_sub = self.create_subscription(
-            msg_type=Image,
-            topic="/camera/image_raw",
-            callback=self.camera_callback,
-            qos_profile=10
+            Image,
+            "/camera/image_raw",
+            self.camera_callback,
+            10
         )
-        
+
+        self.vel_pub = self.create_publisher(
+            Twist,
+            "/cmd_vel",
+            10
+        )
+
         self.package_dir = get_package_share_directory('com2009_team65_2025')
-        self.waiting_for_image = True
         self.bridge = CvBridge()
+        self.waiting_for_alignment = True
+        self.snapshot_taken = False
+
+        # Centroid alignment settings
+        self.target_cy_range = (460, 660)
+        self.turn_vel_fast = -0.5
+        self.turn_vel_slow = -0.1
+
         self.get_logger().info(f"TARGET BEACON: Searching for {self.target_colour}")
 
     def get_colour_thresholds(self):
@@ -52,42 +66,58 @@ class BeaconDetector(Node):
             self.get_logger().warning(f"{e}")
             return
 
-        if self.waiting_for_image:
-            height, width, _ = cv_img.shape
-            crop_width = width - 400
-            crop_height = 400
-            crop_y0 = int((width / 2) - (crop_width / 2))
-            crop_z0 = int((height / 2) - (crop_height / 2))
-            cropped_img = cv_img[crop_z0:crop_z0+crop_height, crop_y0:crop_y0+crop_width]
+        height, width, _ = cv_img.shape
+        crop_width = width - 400
+        crop_height = 400
+        crop_y0 = int((width / 2) - (crop_width / 2))
+        crop_z0 = int((height / 2) - (crop_height / 2))
+        cropped_img = cv_img[crop_z0:crop_z0+crop_height, crop_y0:crop_y0+crop_width]
 
-            hsv_img = cv2.cvtColor(cropped_img, cv2.COLOR_BGR2HSV)
-            lower, upper = self.get_colour_thresholds()
-            img_mask = cv2.inRange(hsv_img, lower, upper)
+        hsv_img = cv2.cvtColor(cropped_img, cv2.COLOR_BGR2HSV)
+        lower, upper = self.get_colour_thresholds()
+        img_mask = cv2.inRange(hsv_img, lower, upper)
 
+        moments = cv2.moments(img_mask)
+        m00 = moments['m00']
+
+        if m00 > 10000:
+            cy = int(moments['m10'] / m00)
+            cz = int(moments['m01'] / m00)
             filtered_img = cv2.bitwise_and(cropped_img, cropped_img, mask=img_mask)
-            moments = cv2.moments(img_mask)
-            if moments['m00'] > 0:
-                cy = int(moments['m10'] / moments['m00'])
-                cz = int(moments['m01'] / moments['m00'])
-                cv2.circle(filtered_img, (cy, cz), 10, (0, 0, 255), 2)
+            cv2.circle(filtered_img, (cy, cz), 10, (0, 0, 255), 2)
 
-                # Save snapshot
-                #save_path = os.path.join(os.getcwd(), "snaps")
-                # Save snapshot - modified path
-                save_path = "/home/student/ros2_ws/src/com2009_team65_2025/snaps"
-                
-                os.makedirs(save_path, exist_ok=True)
-                filename = os.path.join(save_path, "target_beacon.jpg")
-                cv2.imwrite(filename, cropped_img)
-                self.get_logger().info(f"Saved beacon snapshot to: {filename}")
+            # Decide movement
+            twist = Twist()
+            if cy < self.target_cy_range[0]:
+                self.get_logger().info("Beacon on the right - turning right.")
+                twist.angular.z = self.turn_vel_fast
+            elif cy > self.target_cy_range[1]:
+                self.get_logger().info("Beacon on the left - turning left.")
+                twist.angular.z = -self.turn_vel_fast
+            else:
+                self.get_logger().info("Beacon centered - taking snapshot.")
+                twist.angular.z = 0.0
+                self.vel_pub.publish(twist)
 
-                self.waiting_for_image = False
-                cv2.destroyAllWindows()
+                if not self.snapshot_taken:
+                    self.save_snapshot(cropped_img)
+                    self.snapshot_taken = True
+                    self.waiting_for_alignment = False
+
+            self.vel_pub.publish(twist)
+
+    def save_snapshot(self, img):
+        save_path = "/home/student/ros2_ws/src/com2009_team65_2025/snaps"
+        os.makedirs(save_path, exist_ok=True)
+        filename = os.path.join(save_path, "target_beacon.jpg")
+        cv2.imwrite(filename, img)
+        self.get_logger().info(f"Saved beacon snapshot to: {filename}")
+        cv2.destroyAllWindows()
 
 def main(args=None):
     rclpy.init(args=args)
     node = BeaconDetector()
-    while node.waiting_for_image:
+    while node.waiting_for_alignment:
         rclpy.spin_once(node)
     node.destroy_node()
     rclpy.shutdown()
