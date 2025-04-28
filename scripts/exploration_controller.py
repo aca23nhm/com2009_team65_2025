@@ -31,7 +31,7 @@ class ExplorationController(Node):
         ]
         self.total_zones = len(self.zones)
 
-        # New threshold for obstacle detection
+        # Threshold for obstacle detection
         self.obstacle_distance_threshold = 0.38
 
         self.get_logger().info('Exploration Controller node has started.')
@@ -65,51 +65,45 @@ class ExplorationController(Node):
             return
 
         ranges = msg.ranges
-        front = ranges[-10:] + ranges[:10]  # ±10 degrees
-        left = ranges[30:60]                # 30° to 60°
-        right = ranges[-60:-30]             # -60° to -30°
+        num_ranges = len(ranges)
+
+        # Properly divide left and right
+        left = ranges[num_ranges//2 : num_ranges]
+        right = ranges[0 : num_ranges//2]
 
         # Filter invalid readings
-        front = [r for r in front if 0.05 < r < 3.5]
         left = [r for r in left if 0.05 < r < 3.5]
         right = [r for r in right if 0.05 < r < 3.5]
 
-        min_front = min(front) if front else float('inf')
         min_left = min(left) if left else float('inf')
         min_right = min(right) if right else float('inf')
+        min_front = min(ranges[-10:] + ranges[:10]) if ranges else float('inf')  # ±10°
 
         self.get_logger().debug(f"Min Front: {min_front:.2f}, Min Left: {min_left:.2f}, Min Right: {min_right:.2f}")
 
         if min_front < self.obstacle_distance_threshold:
-            self.avoid_obstacle(min_left, min_right, min_front)
+            self.avoid_obstacle(min_left, min_right)
         else:
             self.move_forward()
 
     def move_forward(self):
-        self.get_logger().debug('Moving forward.')
-        self.twist.linear.x = 0.26  # Moderate forward speed
+        self.get_logger().debug('🚗 Moving forward.')
+        self.twist.linear.x = 0.26
         self.twist.angular.z = 0.0
         self.cmd_vel_pub.publish(self.twist)
 
-    def avoid_obstacle(self, min_left, min_right, min_front):
-        self.get_logger().info('Obstacle detected. Deciding turn direction.')
+    def avoid_obstacle(self, min_left, min_right):
+        self.get_logger().info('🚧 Obstacle detected. Deciding turn direction.')
 
-        # Backup a little if very close
-        if min_front < 0.25:
-            self.get_logger().info('Very close obstacle! Backing up slightly.')
-            self.twist.linear.x = -0.05
-            self.twist.angular.z = 0.0
-            self.cmd_vel_pub.publish(self.twist)
-            time.sleep(0.2)
-        else:
-            self.twist.linear.x = 0.0  # Stop moving forward
+        self.twist.linear.x = 0.0  # Stop forward motion first
 
-        # Decide turn direction
         if min_left > min_right:
-            self.twist.angular.z = 0.5 + (min_left / 2.0)
+            # More space on left, turn left
+            self.twist.angular.z = 0.6
             self.get_logger().info('Turning left to avoid obstacle.')
         else:
-            self.twist.angular.z = -(0.5 + (min_right / 2.0))
+            # More space on right, turn right
+            self.twist.angular.z = -0.6
             self.get_logger().info('Turning right to avoid obstacle.')
 
         self.cmd_vel_pub.publish(self.twist)
@@ -117,7 +111,7 @@ class ExplorationController(Node):
     def stop_robot(self):
         if not self.exploration_finished:
             self.exploration_finished = True
-            self.get_logger().info('Stopping robot and publishing /exploration_done.')
+            self.get_logger().info('🛑 Stopping robot and publishing /exploration_done.')
 
             self.twist.linear.x = 0.0
             self.twist.angular.z = 0.0
