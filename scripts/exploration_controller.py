@@ -48,7 +48,7 @@ class ExplorationController(Node):
                     self.get_logger().info(f"Entered zone {i+1}/{self.total_zones}. Visited: {len(self.visited_zones)}/{self.total_zones}")
                     
                     if len(self.visited_zones) == self.total_zones:
-                        self.get_logger().info("✅ All zones visited.")
+                        self.get_logger().info("All zones visited.")
                         self.stop_robot()
                 break
 
@@ -57,38 +57,38 @@ class ExplorationController(Node):
             return
 
         if time.time() - self.time_start > 180:
-            self.get_logger().info("⏳ Time limit reached.")
+            self.get_logger().info("Time limit reached.")
             self.stop_robot()
             return
 
         min_distance = min(msg.ranges[0:20] + msg.ranges[-20:])
         self.get_logger().info(f"Min Distance: {min_distance:.2f}")
 
-        if min_distance < 0.7:
+        if min_distance < 0.38:
             self.avoid_obstacle()
         else:
             self.move_forward()
 
     def avoid_obstacle(self):
-        self.get_logger().info("🚧 Obstacle detected. Rotating...")
+        self.get_logger().info("Obstacle detected. Rotating...")
         self.twist.linear.x = -0.01
         self.twist.angular.z = 0.6
         self.publisher.publish(self.twist)
 
     def move_forward(self):
-        self.get_logger().info("🚗 Moving forward...")
+        self.get_logger().info("Moving forward...")
         self.twist.linear.x = 0.26
         self.twist.angular.z = 0.0
         self.publisher.publish(self.twist)
 
     def stop_robot(self):
         if not self.exploration_finished:
-            self.get_logger().info("🛑 Stopping robot and publishing /exploration_done.")
+            self.get_logger().info("Stopping robot and publishing /exploration_done.")
             self.twist.linear.x = 0.0
             self.twist.angular.z = 0.0
             self.publisher.publish(self.twist)
 
-            # ✅ Publish the exploration_done message
+            # Publish the exploration_done message
             done_msg = Bool()
             done_msg.data = True
             self.done_publisher.publish(done_msg)

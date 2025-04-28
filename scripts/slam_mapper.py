@@ -8,12 +8,12 @@ import numpy as np
 import yaml
 import os
 import cv2
-from ament_index_python.packages import get_package_share_directory
 
 class SLAMMapper(Node):
     def __init__(self):
         super().__init__("slam_mapper")
 
+        # Subscribers
         self.subscription = self.create_subscription(
             OccupancyGrid,
             '/map',
@@ -31,8 +31,8 @@ class SLAMMapper(Node):
         self.latest_map = None
         self.exploration_done = False
 
-        self.package_dir = get_package_share_directory('com2009_team65_2025')
-        self.maps_dir = os.path.join(self.package_dir, 'maps')
+        # Set the path to the maps directory (using the path you specified)
+        self.maps_dir = '/home/student/ros2_ws/src/com2009_team65_2025/maps'
         os.makedirs(self.maps_dir, exist_ok=True)
 
     def map_callback(self, msg):
