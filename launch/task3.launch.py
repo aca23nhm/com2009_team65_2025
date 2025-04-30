@@ -22,6 +22,8 @@ def generate_launch_description():
     )
 
     # Include the Cartographer SLAM launch file
+    # The Cartographer file launches RVIZ - we could potentially switch it out for one that doesn't
+    # but it also launches the cartographer which is very useful
     cartographer_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(cartographer_launch_path),
         launch_arguments={'use_sim_time': 'false'}.items()
@@ -36,23 +38,22 @@ def generate_launch_description():
         parameters=[{'target_colour': LaunchConfiguration('target_colour')}]
     )
 
-    slam_mapper_node = Node(
-        package='com2009_team65_2025',
-        executable='slam_mapper.py',
-        name='slam_mapper'
-    )
+    # Commenting this out with intent to replace it
+    #slam_mapper_node = Node(
+    #    package='com2009_team65_2025',
+    #    executable='slam_mapper.py',
+    #    name='slam_mapper'
+    #)
 
-    exploration_controller_node = Node(
-        package='com2009_team65_2025',
-        executable='exploration_controller.py',
-        name='exploration_controller'
-    )
+    #exploration_controller_node = Node(
+    #    package='com2009_team65_2025',
+    #    executable='exploration_controller.py',
+    #    name='exploration_controller'
+    #)
 
     # Return all launch actions (excluding map saver)
     return LaunchDescription([
         target_colour_arg,
         cartographer_launch,
         beacon_detector_node,
-        slam_mapper_node,
-        exploration_controller_node
     ])
