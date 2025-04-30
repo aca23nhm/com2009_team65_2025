@@ -23,7 +23,7 @@ class BeaconDetector(Node):
         
         self.camera_sub = self.create_subscription(
             Image,
-            "/camera/image_raw",
+            "/camera/color/image_raw",
             self.camera_callback,
             10
         )
