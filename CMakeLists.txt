@@ -47,6 +47,7 @@ install(PROGRAMS
   scripts/beacon_detector.py
   scripts/slam_mapper.py
   scripts/exploration_controller.py
+  scripts/map_processor.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
