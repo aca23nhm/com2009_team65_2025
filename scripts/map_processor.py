@@ -2,11 +2,12 @@
 
 import rclpy
 from rclpy.node import Node
-from nav_msgs.msg import OccupancyGrid, MapMetaData
+from nav_msgs.msg import OccupancyGrid, MapMetaData, Odometry
 from geometry_msgs.msg import Pose, PoseStamped
-from random import randrange
 
-import numpy # array manipulation
+from random import randrange
+from math import sqrt
+
 
 
 class MapProcessor(Node):
@@ -17,8 +18,13 @@ class MapProcessor(Node):
 
     self.map_sub = self.create_subscription(OccupancyGrid, '/map', self.map_received, 1)
     self.goal_pose_pub = self.create_publisher(PoseStamped, '/goal_pose', 1)
+    self.odom_sub = self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
 
     self.sent = False
+    self.pose = 0
+
+  def odom_callback(self, msg):
+    self.pose = msg.pose.pose
 
   def map_received(self, msg):
 
@@ -28,13 +34,22 @@ class MapProcessor(Node):
     self.get_logger().info("time to process map data!")
     map_data : list[int] = msg.data # array of signed bytes - python bindings treat as ints
 
-    # randomly choose points within the map until we find one that is unexplored
-    while map_data[point := randrange(0, msg.info.width * msg.info.height)] == -1: continue
 
-    # get the coordinates of the point
-    coords = self.map_index_to_coordinates(msg.info, point)
-    self.get_logger().info(f'Target coordinates selected: {coords}')
-    self.publish_goal_pose(*coords)
+    map_data_new = []
+    # map all points to robot space
+    for i in range(0, len(map_data)):
+       map_data_new.append(self.map_index_to_coordinates(msg.info, i) if map_data[i] > 0 else -1)
+    map_data = map_data_new
+
+    # filter out all unexplored points, all points that are obstacles
+    map_data = filter((lambda x : x != -1), map_data)
+
+    # sort by euclidian distance to robot
+    own_pos = (self.pose.position.x, self.pose.position.y)
+    furthest = max(map_data, key = (lambda p : self.euclidian_distance(own_pos, p)))
+
+    self.publish_goal_pose(*furthest)
+    
     
        
   def publish_goal_pose(self, goal_x : int, goal_y : int):
@@ -62,6 +77,11 @@ class MapProcessor(Node):
 
   def trim_outside_area(self, map):
      return map # how the hell are we gonna do this?
+
+  def euclidian_distance(self, p1 : tuple[float, float], p2 : tuple[float, float]):
+    return sqrt(
+      pow(p2[0] - p1[0], 2) + pow(p2[1] - p1[1], 2)
+    )
 
 def main(args=None):
     rclpy.init(args=args)
