@@ -1,33 +1,22 @@
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, ExecuteProcess
 from launch.substitutions import LaunchConfiguration
-from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
-
 import os
-from ament_index_python.packages import get_package_share_directory
 
 def generate_launch_description():
-    # Declare launch argument for target colour
     target_colour_arg = DeclareLaunchArgument(
         'target_colour',
         description='The colour of the beacon to search for (yellow|red|green|blue).'
     )
 
-    # Get the path to the Cartographer launch file
-    cartographer_launch_path = os.path.join(
-        get_package_share_directory('tuos_simulations'),
-        'launch',
-        'cartographer.launch.py'
+    cartographer_launch = ExecuteProcess(
+        cmd=[
+            'ros2', 'launch', 'tuos_simulations', 'cartographer.launch.py', 'use_sim_time:=false'
+        ],
+        output='log' 
     )
 
-    # Include the Cartographer SLAM launch file
-    cartographer_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(cartographer_launch_path),
-        launch_arguments={'use_sim_time': 'false'}.items()
-    )
-
-    # Define all nodes
     beacon_detector_node = Node(
         package='com2009_team65_2025',
         executable='beacon_detector.py',
@@ -48,7 +37,6 @@ def generate_launch_description():
         name='exploration_controller'
     )
 
-    # Return all launch actions (excluding map saver)
     return LaunchDescription([
         target_colour_arg,
         cartographer_launch,
