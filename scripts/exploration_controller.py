@@ -78,7 +78,7 @@ class Exploration(Node):
 
         # Set parameters for exploration
         self.safe_distance = 0.40 # Minimum distance to obstacles (metres)
-        self.forward_speed = 0.15  # Linear speed (m/s)
+        self.forward_speed = 0.20 # Linear speed (m/s)
         self.turn_speed = 0.6  # Angular speed (rad/s)
 
         # Levy flight parameters for improved exploration
@@ -131,7 +131,7 @@ class Exploration(Node):
         front_right_indices = list(range(330, 350))  # 10-30 degrees right of center
         left_indices = list(range(30, 90))  # Wider left
         right_indices = list(range(270, 330))  # Wider right
-        rear_indices = list(range(170, 190))  # Approximately behind the robot
+        rear_indices = list(range(170, 210))  # Approximately behind the robot
 
         # Extract sector readings for all sectors
         front_center_ranges = ranges[front_center_indices]
@@ -252,12 +252,12 @@ class Exploration(Node):
         Detect if robot is in a tight space or corner that requires special handling.
         """
         # Front obstacle is close
-        front_close = self.obstacle_distance_front < self.safe_distance * 1.1
+        front_close = self.obstacle_distance_front < self.safe_distance
 
         # At least one side is also restricted
         side_close = (
-            self.obstacle_distance_front_left < self.safe_distance * 1.1 or
-            self.obstacle_distance_front_right < self.safe_distance * 1.1
+            self.obstacle_distance_front_left < self.safe_distance or
+            self.obstacle_distance_front_right < self.safe_distance
         )
 
         # Overall space is restricted
