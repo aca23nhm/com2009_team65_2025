@@ -17,7 +17,7 @@ class BeaconDetector(Node):
     def __init__(self):
         super().__init__("beacon_detector")
 
-        self.declare_parameter("target_colour", "blue")
+        self.declare_parameter("target_colour", "yellow")
         self.target_colour = self.get_parameter("target_colour").get_parameter_value().string_value
         
         self.camera_sub = self.create_subscription(
@@ -31,6 +31,10 @@ class BeaconDetector(Node):
         self.waiting_for_image = True
         self.bridge = CvBridge()
         self.get_logger().info(f"TARGET BEACON: Searching for {self.target_colour}")
+
+    # takes an already cropped and filtered and masked b&w image
+    def is_image_vertical(self, image):
+        return True
 
     def get_colour_thresholds(self):
         if self.target_colour == "blue":
@@ -53,26 +57,32 @@ class BeaconDetector(Node):
             return
 
         if self.waiting_for_image:
+        
+            self.show_img(cv_img, "original")
+        
             height, width, _ = cv_img.shape
             crop_width = width - 400
             crop_height = 400
             crop_y0 = int((width / 2) - (crop_width / 2))
             crop_z0 = int((height / 2) - (crop_height / 2))
             cropped_img = cv_img[crop_z0:crop_z0+crop_height, crop_y0:crop_y0+crop_width]
+            self.show_img(cropped_img, "cropped")
 
-            hsv_img = cv2.cvtColor(cropped_img, cv2.COLOR_BGR2HSV)
+            hsv_img = cv2.cvtColor(cv_img, cv2.COLOR_BGR2HSV)
             lower, upper = self.get_colour_thresholds()
             img_mask = cv2.inRange(hsv_img, lower, upper)
 
+            self.show_img(img_mask, "mask")
+
             filtered_img = cv2.bitwise_and(cropped_img, cropped_img, mask=img_mask)
+            self.show_img(filtered_img, "masked")
+
             moments = cv2.moments(img_mask)
             if moments['m00'] > 0:
                 cy = int(moments['m10'] / moments['m00'])
                 cz = int(moments['m01'] / moments['m00'])
                 cv2.circle(filtered_img, (cy, cz), 10, (0, 0, 255), 2)
 
-                # Save snapshot
-                #save_path = os.path.join(os.getcwd(), "snaps")
                 # Save snapshot - modified path
                 save_path = "/home/student/ros2_ws/src/com2009_team65_2025/snaps"
                 
@@ -83,6 +93,24 @@ class BeaconDetector(Node):
 
                 self.waiting_for_image = False
                 cv2.destroyAllWindows()
+
+
+
+    
+    def show_img(self, img, img_name, save_img=False): 
+        self.get_logger().info("Opening the image in a new window...")
+        cv2.imshow(img_name, img) 
+
+        if save_img: 
+            self.save_image(img, img_name)
+
+        self.get_logger().info(
+            "IMPORTANT: Close the image pop-up window to exit."
+        )
+        cv2.waitKey(0) 
+
+
+
 
 def main(args=None):
     rclpy.init(args=args)
