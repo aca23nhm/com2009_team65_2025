@@ -1,6 +1,9 @@
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, ExecuteProcess
+from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument, ExecuteProcess
+from ament_index_python.packages import get_package_share_directory
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import LifecycleNode
 from launch_ros.actions import Node
 import os
 
@@ -10,6 +13,7 @@ def generate_launch_description():
         description='The colour of the beacon to search for (yellow|red|green|blue).'
     )
 
+    # Start Cartographer SLAM
     cartographer_launch = ExecuteProcess(
         cmd=[
             'ros2', 'launch', 'tuos_simulations', 'cartographer.launch.py', 'use_sim_time:=false'
@@ -17,6 +21,30 @@ def generate_launch_description():
         output='log' 
     )
 
+    map_saver_node = Node(
+        package='nav2_map_server',
+        executable='map_saver_server',
+        name='map_saver',
+        output='screen',
+        parameters=[{
+            'save_map_timeout': 2000.0,
+            'free_thresh': 0.25,
+            'occupied_thresh': 0.65,
+            'use_sim_time': False
+        }]
+    )
+    lifecycle_manager = Node(
+        package='nav2_lifecycle_manager',
+        executable='lifecycle_manager',
+        name='lifecycle_manager_map_saver',
+        output='screen',
+        parameters=[{
+            'use_sim_time': False,
+            'autostart': True,
+            'node_names': ['map_saver']
+        }]
+    )
+    # Your nodes
     beacon_detector_node = Node(
         package='com2009_team65_2025',
         executable='beacon_detector.py',
@@ -40,6 +68,8 @@ def generate_launch_description():
     return LaunchDescription([
         target_colour_arg,
         cartographer_launch,
+        map_saver_node,
+        lifecycle_manager,
         beacon_detector_node,
         slam_mapper_node,
         exploration_controller_node
