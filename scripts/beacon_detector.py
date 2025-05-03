@@ -10,6 +10,7 @@ from sensor_msgs.msg import Image
 
 import os
 from pathlib import Path
+from math import atan
 from ament_index_python.packages import get_package_share_directory
 
 class BeaconDetector(Node):
@@ -17,7 +18,7 @@ class BeaconDetector(Node):
     def __init__(self):
         super().__init__("beacon_detector")
 
-        self.declare_parameter("target_colour", "yellow")
+        self.declare_parameter("target_colour", "red")
         self.target_colour = self.get_parameter("target_colour").get_parameter_value().string_value
         
         self.camera_sub = self.create_subscription(
@@ -32,9 +33,27 @@ class BeaconDetector(Node):
         self.bridge = CvBridge()
         self.get_logger().info(f"TARGET BEACON: Searching for {self.target_colour}")
 
-    # takes an already cropped and filtered and masked b&w image
-    def is_image_vertical(self, image):
-        return True
+    def does_row_contain_zeroes(self, row):
+        THRESHOLD = 10
+        return len([px for px in row if px == 0]) > THRESHOLD
+
+    def image_has_clear_areas(self, img, cz):
+        SCALE_FACTOR = 0.5
+        img = cv2.resize(img, (0,0), fx=SCALE_FACTOR, fy=SCALE_FACTOR)
+        height, w = img.shape
+        cz *= SCALE_FACTOR
+
+        check_points = [int(cz + d * cz * 1/2) for d in range(-1, 2)] # d = kronenburg delta (but it can also equal 0...)
+        assert len(check_points) == 3
+        
+        rows = [img[p] for p in check_points]
+
+        debug_img = img.copy()
+        for z in check_points:
+            cv2.line(debug_img, (0,z), (w, z), (255, 0, 0), 1)
+        self.show_img(debug_img, "lines")
+
+        return any(map( self.does_row_contain_zeroes, rows))
 
     def get_colour_thresholds(self):
         if self.target_colour == "blue":
@@ -58,30 +77,30 @@ class BeaconDetector(Node):
 
         if self.waiting_for_image:
         
-            self.show_img(cv_img, "original")
+            #self.show_img(cv_img, "original")
         
             height, width, _ = cv_img.shape
             crop_width = width - 400
             crop_height = 400
             crop_y0 = int((width / 2) - (crop_width / 2))
-            crop_z0 = int((height / 2) - (crop_height / 2))
+            crop_z0 = 0
             cropped_img = cv_img[crop_z0:crop_z0+crop_height, crop_y0:crop_y0+crop_width]
             self.show_img(cropped_img, "cropped")
 
-            hsv_img = cv2.cvtColor(cv_img, cv2.COLOR_BGR2HSV)
+
+            hsv_img = cv2.cvtColor(cropped_img, cv2.COLOR_BGR2HSV)
             lower, upper = self.get_colour_thresholds()
             img_mask = cv2.inRange(hsv_img, lower, upper)
 
-            self.show_img(img_mask, "mask")
-
-            filtered_img = cv2.bitwise_and(cropped_img, cropped_img, mask=img_mask)
-            self.show_img(filtered_img, "masked")
-
             moments = cv2.moments(img_mask)
-            if moments['m00'] > 0:
-                cy = int(moments['m10'] / moments['m00'])
-                cz = int(moments['m01'] / moments['m00'])
-                cv2.circle(filtered_img, (cy, cz), 10, (0, 0, 255), 2)
+            cy = int(moments['m10'] / moments['m00'])
+            cz = int(moments['m01'] / moments['m00'])
+
+            clear_areas = self.image_has_clear_areas(img_mask, cz)
+            self.get_logger().info(f"This image has clear areas: {clear_areas}")
+            if moments['m00'] > 0 and clear_areas:
+                
+                # cv2.circle(filtered_img, (cy, cz), 10, (0, 0, 255), 2)
 
                 # Save snapshot - modified path
                 save_path = "/home/student/ros2_ws/src/com2009_team65_2025/snaps"
@@ -92,10 +111,7 @@ class BeaconDetector(Node):
                 self.get_logger().info(f"Saved beacon snapshot to: {filename}")
 
                 self.waiting_for_image = False
-                cv2.destroyAllWindows()
-
-
-
+                cv2.destroyAllWindows()    
     
     def show_img(self, img, img_name, save_img=False): 
         self.get_logger().info("Opening the image in a new window...")
