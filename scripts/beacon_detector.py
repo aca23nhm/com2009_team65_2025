@@ -43,7 +43,7 @@ class BeaconDetector(Node):
         height, w = img.shape
         cz *= SCALE_FACTOR
 
-        check_points = [int(cz + d * cz * 1/2) for d in range(-1, 2)] # d = kronenburg delta (but it can also equal 0...)
+        check_points = [int(height * (1/x) - 1) for x in range(1, 4)]
         assert len(check_points) == 3
         
         rows = [img[p] for p in check_points]
@@ -98,7 +98,8 @@ class BeaconDetector(Node):
 
             clear_areas = self.image_has_clear_areas(img_mask, cz)
             self.get_logger().info(f"This image has clear areas: {clear_areas}")
-            if moments['m00'] > 0 and clear_areas:
+            self.get_logger().info(f"White area in this image: {moments['m00']}.")
+            if moments['m00'] > 400000 and clear_areas:
                 
                 # cv2.circle(filtered_img, (cy, cz), 10, (0, 0, 255), 2)
 
