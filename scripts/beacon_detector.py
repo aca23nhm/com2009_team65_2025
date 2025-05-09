@@ -23,7 +23,7 @@ class BeaconDetector(Node):
         
         self.camera_sub = self.create_subscription(
             msg_type=Image,
-            topic="/camera/image_raw",
+            topic="/camera/color/image_raw",
             callback=self.camera_callback,
             qos_profile=10
         )
@@ -80,9 +80,10 @@ class BeaconDetector(Node):
 
         if self.waiting_for_image:
         
-            #self.show_img(cv_img, "original")
+            self.show_img(cv_img, "original")
         
             height, width, _ = cv_img.shape
+            self.get_logger().info(f"Height: {height}, Width: {width} of original image")
             crop_width = width - 400
             crop_height = 400
             crop_y0 = int((width / 2) - (crop_width / 2))
@@ -97,7 +98,7 @@ class BeaconDetector(Node):
 
             moments = cv2.moments(img_mask)
             if moments['m00'] == 0:
-                self.get_logger().log("Stopping image processing here because m00 is zero.")
+                self.get_logger().info("Stopping image processing here because m00 is zero.")
                 return
             cy = int(moments['m10'] / moments['m00'])
             cz = int(moments['m01'] / moments['m00'])
