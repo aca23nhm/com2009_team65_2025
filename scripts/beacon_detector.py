@@ -96,13 +96,16 @@ class BeaconDetector(Node):
             img_mask = cv2.inRange(hsv_img, lower, upper)
 
             moments = cv2.moments(img_mask)
+            if moments['m00'] == 0:
+                self.get_logger().log("Stopping image processing here because m00 is zero.")
+                return
             cy = int(moments['m10'] / moments['m00'])
             cz = int(moments['m01'] / moments['m00'])
 
             clear_areas = self.image_has_clear_areas(img_mask, cz)
             self.get_logger().info(f"This image has clear areas: {clear_areas}")
             self.get_logger().info(f"White area in this image: {moments['m00']}.")
-            if moments['m00'] > 400000 and clear_areas or True:
+            if moments['m00'] > 400000 and clear_areas and img_mask[cy, cz] == 255 or True:
                 
                 cv2.circle(self.debug_img, (cy, cz), 10, (0, 0, 255), 2)
                 self.show_img(self.debug_img, "lines")
