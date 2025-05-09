@@ -18,7 +18,7 @@ class BeaconDetector(Node):
     def __init__(self):
         super().__init__("beacon_detector")
 
-        self.declare_parameter("target_colour", "red")
+        self.declare_parameter("target_colour", "yellow")
         self.target_colour = self.get_parameter("target_colour").get_parameter_value().string_value
         
         self.camera_sub = self.create_subscription(
@@ -33,27 +33,30 @@ class BeaconDetector(Node):
         self.bridge = CvBridge()
         self.get_logger().info(f"TARGET BEACON: Searching for {self.target_colour}")
 
-    def does_row_contain_zeroes(self, row):
-        THRESHOLD = 10
-        return len([px for px in row if px == 0]) > THRESHOLD
+    def does_row_contain_zeroes(self, row, threshold=50):
+        return len([px for px in row if px == 0]) > threshold
+    
+    def does_row_contain_ones(self, row, threshold=50):
+        return len([px for px in row if px == 255]) > threshold
 
     def image_has_clear_areas(self, img, cz):
         SCALE_FACTOR = 0.5
         img = cv2.resize(img, (0,0), fx=SCALE_FACTOR, fy=SCALE_FACTOR)
         height, w = img.shape
+        self.get_logger().info(f"Height: {height}, width: {w}")
         cz *= SCALE_FACTOR
 
-        check_points = [int(height * (1/x) - 1) for x in range(1, 4)]
+        check_points = [int(height * (0.25*x) - 1) for x in range(1, 4)]
+        self.get_logger().info(f"Checkpoints at {[i for i in check_points]}")
         assert len(check_points) == 3
         
         rows = [img[p] for p in check_points]
 
-        debug_img = img.copy()
+        self.debug_img = img.copy()
         for z in check_points:
-            cv2.line(debug_img, (0,z), (w, z), (255, 0, 0), 1)
-        self.show_img(debug_img, "lines")
-
-        return any(map( self.does_row_contain_zeroes, rows))
+            cv2.line(self.debug_img, (0,z), (w, z), (255, 0, 0), 1)
+        
+        return any(map( self.does_row_contain_zeroes, rows)) and any(map( self.does_row_contain_ones, rows))
 
     def get_colour_thresholds(self):
         if self.target_colour == "blue":
@@ -99,9 +102,11 @@ class BeaconDetector(Node):
             clear_areas = self.image_has_clear_areas(img_mask, cz)
             self.get_logger().info(f"This image has clear areas: {clear_areas}")
             self.get_logger().info(f"White area in this image: {moments['m00']}.")
-            if moments['m00'] > 400000 and clear_areas:
+            if moments['m00'] > 400000 and clear_areas or True:
                 
-                # cv2.circle(filtered_img, (cy, cz), 10, (0, 0, 255), 2)
+                cv2.circle(self.debug_img, (cy, cz), 10, (0, 0, 255), 2)
+                self.show_img(self.debug_img, "lines")
+
 
                 # Save snapshot - modified path
                 save_path = "/home/student/ros2_ws/src/com2009_team65_2025/snaps"
