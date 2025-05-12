@@ -48,4 +48,4 @@ TODO Functional Block Diagram
 - [Lottie McGhee](https://github.com/drearyplane8)
 - [Tommy Sargaison](https://github.com/tommmicron)
 - [Husna Hakim](https://github.com/aca23nhm)
-- [Nik Farhanah Zawawi](https://github.com/anahnick) (is this the correct name??)
+- [Nik Farhanah Zawawi](https://github.com/anahnick)
