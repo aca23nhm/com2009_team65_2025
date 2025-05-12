@@ -9,8 +9,7 @@ from cv_bridge import CvBridge, CvBridgeError
 from sensor_msgs.msg import Image
 
 import os
-from pathlib import Path
-from math import atan
+import sys
 from ament_index_python.packages import get_package_share_directory
 
 class BeaconDetector(Node):
@@ -20,10 +19,14 @@ class BeaconDetector(Node):
 
         self.declare_parameter("target_colour", "yellow")
         self.target_colour = self.get_parameter("target_colour").get_parameter_value().string_value
+
+        self.declare_parameter("in_simulator", False)
+        self.in_simulator = self.get_parameter("in_simulator").get_parameter_value().bool_value
+        self.get_logger().info(f"In simulator is {self.in_simulator}")
         
         self.camera_sub = self.create_subscription(
             msg_type=Image,
-            topic="/camera/color/image_raw",
+            topic=f"/camera/{'color/' if not self.in_simulator else ''}image_raw",
             callback=self.camera_callback,
             qos_profile=10
         )
@@ -40,11 +43,8 @@ class BeaconDetector(Node):
         return len([px for px in row if px == 255]) > threshold
 
     def image_has_clear_areas(self, img, cz):
-        SCALE_FACTOR = 0.5
-        img = cv2.resize(img, (0,0), fx=SCALE_FACTOR, fy=SCALE_FACTOR)
         height, w = img.shape
         self.get_logger().info(f"Height: {height}, width: {w}")
-        cz *= SCALE_FACTOR
 
         check_points = [int(height * (0.25*x) - 1) for x in range(1, 4)]
         self.get_logger().info(f"Checkpoints at {[i for i in check_points]}")
@@ -84,11 +84,13 @@ class BeaconDetector(Node):
         
             height, width, _ = cv_img.shape
             self.get_logger().info(f"Height: {height}, Width: {width} of original image")
-            crop_width = width - 400
-            crop_height = 400
+            crop_width = int(width * 0.8)     # roughly equal to the absolute values from Ass1 Part6
+            crop_height = int(height * 0.375)
             crop_y0 = int((width / 2) - (crop_width / 2))
             crop_z0 = 0
             cropped_img = cv_img[crop_z0:crop_z0+crop_height, crop_y0:crop_y0+crop_width]
+            self.get_logger().info(f"Crop Width: {crop_width}, Crop Height: {crop_height}")
+            self.get_logger().info(f"Crop y0: {crop_y0}, crop z0: {crop_z0}")
             self.show_img(cropped_img, "cropped")
 
 
