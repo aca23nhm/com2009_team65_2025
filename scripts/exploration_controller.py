@@ -253,6 +253,7 @@ class Exploration(Node):
             response.do_you_have_control = False
         else:
             self.has_control = False
+            self.vel_pub.publish(Twist()) # zero out our velocity
             response.do_you_have_control = True    
         return response
 
