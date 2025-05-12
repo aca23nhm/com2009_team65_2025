@@ -71,7 +71,7 @@ class MapExplorerRobot(Node):
         # Environment mapping
         self.environment_width = 4.0
         self.sector_width = 1.0
-        self.grid_dimension = 4.0
+        self.grid_dimension = 3
         self.visited_grid = np.zeros((self.grid_dimension, self.grid_dimension), dtype=int)
         
         # Mark center sectors as already visited (orange zone)
@@ -98,7 +98,7 @@ class MapExplorerRobot(Node):
         # Start control loop at 10Hz
         self.control_loop = self.create_timer(0.1, self._navigation_control_loop)
         
-        self.get_logger().info("Map Explorer initialized - Beginning Task")
+        self.get_logger().info("Map Explorer initialized - beginning autonomous navigation")
     
     def _process_lidar_data(self, scan_data: LaserScan):
         """Process incoming laser scan data to detect obstacles in different directions."""
@@ -196,7 +196,7 @@ class MapExplorerRobot(Node):
                     
                     self.get_logger().info(
                         f"Entered new sector: ({display_x}, {display_y}). "
-                        f"Total visited: {total_visited}/9."
+                        f"Total visited: {total_visited}/12."
                     )
         
         # Update current sector
@@ -236,7 +236,7 @@ class MapExplorerRobot(Node):
             # Check if path is clear ahead
             if self.sensor_readings["front"] > self.safe_distance:
                 # Check if we've moved far enough in this direction
-                if self.distance_since_last_turn > 3.0;
+                if self.distance_since_last_turn > self.target_segment_length:
                     # Switch to turning state
                     self.robot_state = "CHANGE_DIRECTION"
                     
@@ -313,7 +313,6 @@ class MapExplorerRobot(Node):
         ) / 2 < self.safe_distance
         
         return front_blocked and sides_restricted and avg_space
-    
     def _handle_confined_space(self):
         """Execute special operation to escape confined spaces."""
         self.get_logger().info("Confined space detected - executing escape operation")
