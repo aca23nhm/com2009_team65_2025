@@ -25,7 +25,7 @@ In a terminal, navigate to `~/ros2_ws/src` and run these commands:
 
 `source ~/.bashrc`, and
 
-`ros2 launch task3.launch.py`.
+`ros2 launch com2009_team65_2025 task3.launch.py`.
 
 This last command starts the robot running, so make sure to place the robot in the arena
 before this.

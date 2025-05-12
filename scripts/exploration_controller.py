@@ -98,7 +98,7 @@ class MapExplorerRobot(Node):
         # Start control loop at 10Hz
         self.control_loop = self.create_timer(0.1, self._navigation_control_loop)
         
-        self.get_logger().info("Map Explorer initialized - beginning autonomous navigation")
+        self.get_logger().info("Map Explorer initialized - Beginning Task")
     
     def _process_lidar_data(self, scan_data: LaserScan):
         """Process incoming laser scan data to detect obstacles in different directions."""
@@ -196,7 +196,7 @@ class MapExplorerRobot(Node):
                     
                     self.get_logger().info(
                         f"Entered new sector: ({display_x}, {display_y}). "
-                        f"Total visited: {total_visited}/12."
+                        f"Total visited: {total_visited}/9."
                     )
         
         # Update current sector
@@ -313,13 +313,14 @@ class MapExplorerRobot(Node):
         ) / 2 < self.safe_distance
         
         return front_blocked and sides_restricted and avg_space
+    
     def _handle_confined_space(self):
         """Execute special operation to escape confined spaces."""
         self.get_logger().info("Confined space detected - executing escape operation")
         
         # Try to back up if there's space
         if self.sensor_readings["rear"] > 0.3:
-            self.robot_command.linear.x = -0.1  # Gentle reverse
+            self.robot_command.linear.x = -0.05  # Gentle reverse
         else:
             self.robot_command.linear.x = 0.0  # Can't back up
         
@@ -342,7 +343,7 @@ class MapExplorerRobot(Node):
     def _generate_segment_length(self):
         """Generate a variable segment length using modified Levy flight pattern."""
         # Apply Levy-like distribution (more short moves, occasional long ones)
-        if random() < 0.2:  # 20% chance of longer movement
+        if random() < 0.6:  # 20% chance of longer movement
             return uniform(1.0, 3.0)
         else:
             return uniform(0.5, 1.0)
