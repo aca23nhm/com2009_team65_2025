@@ -70,8 +70,8 @@ class MapExplorerRobot(Node):
         
         # Environment mapping
         self.environment_width = 4.0
-        self.grid_dimension = 3
-        self.sector_width = self.environment_width / self.grid_dimension  # ≈ 1.333
+        self.sector_width = 1.0
+        self.grid_dimension = 4.0
         self.visited_grid = np.zeros((self.grid_dimension, self.grid_dimension), dtype=int)
         
         # Mark center sectors as already visited (orange zone)
@@ -236,7 +236,7 @@ class MapExplorerRobot(Node):
             # Check if path is clear ahead
             if self.sensor_readings["front"] > self.safe_distance:
                 # Check if we've moved far enough in this direction
-                if self.distance_since_last_turn > 3.0:
+                if self.distance_since_last_turn > 3.0;
                     # Switch to turning state
                     self.robot_state = "CHANGE_DIRECTION"
                     
