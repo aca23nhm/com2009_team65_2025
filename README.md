@@ -25,7 +25,7 @@ In a terminal, navigate to `~/ros2_ws/src` and run these commands:
 
 `source ~/.bashrc`, and
 
-`ros2 launch task3.launch.py`.
+`ros2 launch com2009_team65_2025 task3.launch.py`.
 
 This last command starts the robot running, so make sure to place the robot in the arena
 before this.
@@ -47,5 +47,5 @@ TODO Functional Block Diagram
 # Contributor (team members and link to github profile)
 - [Lottie McGhee](https://github.com/drearyplane8)
 - [Tommy Sargaison](https://github.com/tommmicron)
-- [Husna Hakim](https://github.com/aca23nhm)
-- [Nik Farhanah Zawawi](https://github.com/anahnick)
+- [Nurul Husna Mohmad Hakim](https://github.com/aca23nhm)
+- [Nik Farhanah Nik Zawawi](https://github.com/anahnick)

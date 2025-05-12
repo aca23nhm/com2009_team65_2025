@@ -1,15 +1,7 @@
-free_thresh: 0.196
 image: arena_map.png
-<<<<<<< HEAD
-=======
 mode: trinary
 resolution: 0.05
-origin: [-0.855, -2.3, 0]
->>>>>>> 90e3c9fea1f2e3a9879517d5892c663687890ce8
+origin: [-2.15, -2.03, 0]
 negate: 0
 occupied_thresh: 0.65
-origin:
-- -0.9053322792053223
-- -2.22951774597168
-- 0.0
-resolution: 0.05000000074505806
+free_thresh: 0.25
