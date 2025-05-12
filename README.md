@@ -47,5 +47,5 @@ TODO Functional Block Diagram
 # Contributor (team members and link to github profile)
 - [Lottie McGhee](https://github.com/drearyplane8)
 - [Tommy Sargaison](https://github.com/tommmicron)
-- [Husna Hakim](https://github.com/aca23nhm)
+- [Nurul Husna Mohmad Hakim](https://github.com/aca23nhm)
 - [Nik Farhanah Nik Zawawi](https://github.com/anahnick)
