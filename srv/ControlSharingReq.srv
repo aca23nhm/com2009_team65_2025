@@ -1,0 +1,3 @@
+bool giving_back          # false for the client to request control, true to give it back
+---
+bool do_you_have_control  # will usually be true after a request, and false after a relinquishing

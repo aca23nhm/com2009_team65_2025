@@ -9,7 +9,8 @@ from cv_bridge import CvBridge, CvBridgeError
 from sensor_msgs.msg import Image
 
 import os
-import sys
+from geometry_msgs.msg import Twist 
+from com2009_team65_2025.srv import ControlSharingReq
 from ament_index_python.packages import get_package_share_directory
 
 class BeaconDetector(Node):
@@ -17,6 +18,7 @@ class BeaconDetector(Node):
     def __init__(self):
         super().__init__("beacon_detector")
 
+        # Declare ROS2 parameters
         self.declare_parameter("target_colour", "yellow")
         self.target_colour = self.get_parameter("target_colour").get_parameter_value().string_value
 
@@ -24,13 +26,41 @@ class BeaconDetector(Node):
         self.in_simulator = self.get_parameter("in_simulator").get_parameter_value().bool_value
         self.get_logger().info(f"In simulator is {self.in_simulator}")
         
+        # Set up pub/subs, client for control sharing.
         self.camera_sub = self.create_subscription(
             msg_type=Image,
             topic=f"/camera/{'color/' if not self.in_simulator else ''}image_raw",
             callback=self.camera_callback,
             qos_profile=10
         )
-        
+
+        self.vel_pub = self.create_publisher(
+            msg_type=Twist,
+            topic="/cmd_vel",
+            qos_profile=10
+        )
+
+        # Start up the timer callback
+        self.timer = self.create_timer(
+            timer_period_sec=1/5,
+            callback=self.centre_pillar_callback
+        )        
+
+        self.control_requester = self.create_client(
+            ControlSharingReq, 'beacon_detector'
+        )
+
+        # timer callback uses this
+        self.stop_counter = 0
+
+        # Stop the camera callback from being annoying if the centrer callback is running
+        self.centering = False
+
+        # constants
+        self.m00_MINIMUM = 0
+        self.FAST_TURN_RATE = -0.5 # Values from tuos_simulations/colour_search
+        self.SLOW_TURN_RATE = -0.1
+
         self.package_dir = get_package_share_directory('com2009_team65_2025')
         self.waiting_for_image = True
         self.bridge = CvBridge()
@@ -72,6 +102,10 @@ class BeaconDetector(Node):
             return (20, 120, 50), (30, 255, 255)
 
     def camera_callback(self, img_data):
+
+        if self.centering:
+            return
+
         try:
             cv_img = self.bridge.imgmsg_to_cv2(img_data, desired_encoding="bgr8")
         except CvBridgeError as e:
@@ -89,8 +123,6 @@ class BeaconDetector(Node):
             crop_y0 = int((width / 2) - (crop_width / 2))
             crop_z0 = 0
             cropped_img = cv_img[crop_z0:crop_z0+crop_height, crop_y0:crop_y0+crop_width]
-            self.get_logger().info(f"Crop Width: {crop_width}, Crop Height: {crop_height}")
-            self.get_logger().info(f"Crop y0: {crop_y0}, crop z0: {crop_z0}")
             self.show_img(cropped_img, "cropped")
 
 
@@ -102,28 +134,33 @@ class BeaconDetector(Node):
             if moments['m00'] == 0:
                 self.get_logger().info("Stopping image processing here because m00 is zero.")
                 return
-            cy = int(moments['m10'] / moments['m00'])
-            cz = int(moments['m01'] / moments['m00'])
+            cy = get_cy(moments)
+            cz = get_cz(moments)
 
             clear_areas = self.image_has_clear_areas(img_mask, cz)
             self.get_logger().info(f"This image has clear areas: {clear_areas}")
             self.get_logger().info(f"White area in this image: {moments['m00']}.")
             if moments['m00'] > 400000 and clear_areas and img_mask[cz, cy] == 255 or True:
                 
+                # We have found something! lets try and turn towards it
+
+                # Hand it the data it needs (moments, the full image to save)
+                self.moments = moments
+                self.full_image = img_data
+
+                # Send a request ot the main ExplorationController for control of the robot's movement
+                control_request = ControlSharingReq.Request()
+                control_request.giving_back = False
+                self.control_requester.call_async(control_request)
+
+                # Set the centerer off to the races
+                self.centering = True
+
                 cv2.circle(self.debug_img, (cy, cz), 10, (0, 0, 255), 2)
                 self.show_img(self.debug_img, "lines")
 
 
-                # Save snapshot - modified path
-                save_path = "/home/student/ros2_ws/src/com2009_team65_2025/snaps"
-                
-                os.makedirs(save_path, exist_ok=True)
-                filename = os.path.join(save_path, "target_beacon.jpg")
-                cv2.imwrite(filename, cropped_img)
-                self.get_logger().info(f"Saved beacon snapshot to: {filename}")
 
-                self.waiting_for_image = False
-                cv2.destroyAllWindows()    
     
     def show_img(self, img, img_name, save_img=False): 
         self.get_logger().info("Opening the image in a new window...")
@@ -136,6 +173,80 @@ class BeaconDetector(Node):
             "IMPORTANT: Close the image pop-up window to exit."
         )
         cv2.waitKey(0) 
+
+    # Callback that handles turning in place to try and centre a beacon
+    def centre_pillar_callback(self):
+        if not self.centering:
+            return
+        
+        if self.stop_counter > 0:
+            self.stop_counter -= 1
+
+        cy = get_cy(self.moments)
+        m00 = self.moments['m00']
+        vel_cmd = Twist()
+
+        if m00 > 400000: # TODO determine some good moo minima
+            # blob detected
+            if cy >= 560-100 and cy <= 560+100: # TODO change this to be non-fixed to 1080p
+                if self.move_rate == 'slow':
+                    self.move_rate = 'stop'
+                    self.stop_counter = 30
+            else:
+                self.move_rate = 'slow'
+        else:
+            self.move_rate = 'fast'
+            
+        if self.move_rate == 'fast':
+            self.get_logger().info(
+                "\nMOVING FAST:\n"
+                "I can't see anything at the moment, scanning the area..."
+            )
+            vel_cmd.angular.z = self.FAST_TURN_RATE
+            
+        elif self.move_rate == 'slow':
+            self.get_logger().info(
+                f"\nMOVING SLOW:\n"
+                f"A blob of colour of size {m00:.0f} pixels is in view at y-position: {cy:.0f} pixels."
+            )
+            vel_cmd.angular.z = self.SLOW_TURN_RATE
+        
+        elif self.move_rate == 'stop' and self.stop_counter > 0:
+            self.get_logger().info(
+                f"\nSTOPPED:\n"
+                f"The blob of colour is now dead-ahead at y-position {cy:.0f} pixels... Counting down: {self.stop_counter}"
+            )
+            vel_cmd.angular.z = 0.0
+            self.centering = False
+            self.save_image(self.full_image)
+        
+        else:
+            self.get_logger().info(
+                f"\nMOVING SLOW:\n"
+                f"A blob of colour of size {m00:.0f} pixels is in view at y-position: {cy:.0f} pixels."
+            )
+            vel_cmd.angular.z = self.SLOW_TURN_RATE
+        
+        self.vel_pub.publish(vel_cmd)
+
+def save_image(self, img):
+        # Save snapshot - modified path
+    save_path = "/home/student/ros2_ws/src/com2009_team65_2025/snaps"
+    
+    os.makedirs(save_path, exist_ok=True)
+    filename = os.path.join(save_path, "target_beacon.jpg")
+    cv2.imwrite(filename, img)
+    self.get_logger().info(f"Saved beacon snapshot to: {filename}")
+
+    self.waiting_for_image = False
+    cv2.destroyAllWindows()    
+
+
+def get_cy(moments):
+    return int(moments['m10'] / moments['m00'])
+
+def get_cz(moments):
+    return int(moments['m01'] / moments['m00'])
 
 
 def main(args=None):

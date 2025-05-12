@@ -15,6 +15,7 @@ from rclpy.signals import SignalHandlerOptions
 from sensor_msgs.msg import LaserScan
 from std_msgs.msg import Bool
 from cartographer_ros_msgs.srv import FinishTrajectory
+from com2009_team65_2025.srv import ControlSharingReq
 
 
 class Exploration(Node):
@@ -43,6 +44,13 @@ class Exploration(Node):
             'odom',
             self.odom_callback,
             10
+        )
+
+        # Create a server for the control taker overer
+        self.control_relinquisher = self.create_service(
+            srv_type=ControlSharingReq,
+            srv_name='exploration_controller_control_server',
+            callback = self.control_relinquisher_callback
         )
 
         self.done_pub = self.create_publisher(Bool, '/exploration_done', 10)
@@ -109,6 +117,9 @@ class Exploration(Node):
 
         # Create a timer for the control loop (10Hz)
         self.control_timer = self.create_timer(0.1, self.control_loop_callback)
+
+        # Boolean value that enables the beacon detector to take control of the robot's movement when needed.
+        self.has_control = True
 
         self.get_logger().info("Exploration node initialised. Starting autonomous exploration.")
 
@@ -236,6 +247,15 @@ class Exploration(Node):
         # Log position periodically
         self.get_logger().info(f"Position: dx = {dx:.2f}m, dy = {dy:.2f}m | Zone: ({zone_x}, {zone_y})", throttle_duration_sec = 5)
 
+    def control_relinquisher_callback(self, request, response):
+        if request.giving_back:
+            self.has_control = True
+            response.do_you_have_control = False
+        else:
+            self.has_control = False
+            response.do_you_have_control = True    
+        return response
+
     def generate_levy_distance(self):
         """
         Generate a Levy flight distance for straight-line travel.
@@ -289,7 +309,9 @@ class Exploration(Node):
             turn_dir = -1  # Right
 
         self.vel.angular.z = self.turn_speed * self.corner_avoidance_multiplier * turn_dir
-        self.vel_pub.publish(self.vel)
+
+        if self.has_control:
+            self.vel_pub.publish(self.vel)
 
         # Reset straight line travel target
         self.distance_traveled_since_turn = 0.0
@@ -493,8 +515,9 @@ class Exploration(Node):
                 self.distance_traveled_since_turn = 0.0
 
         # Publish velocity command
-        self.vel_pub.publish(self.vel)
-
+        if self.has_control:
+            self.vel_pub.publish(self.vel)
+    
     def on_shutdown(self):
         # Stop the robot
         for _ in range(5):

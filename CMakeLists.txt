@@ -20,6 +20,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "action/ExploreForward.action" 
   "action/AvoidingObstacles.action"
   "action/Task3Forward.action"
+  "srv/ControlSharingReq.srv"
 )
 
 # Include Cpp "include" directory
