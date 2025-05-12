@@ -46,7 +46,7 @@ class MapExplorerRobot(Node):
         # Setup robot motion parameters
         self.linear_velocity = 0.20  # Forward speed in m/s
         self.rotation_velocity = 0.6  # Rotation speed in rad/s
-        self.clearance_threshold = 0.40  # Minimum safe distance to obstacles
+        self.safe_distance = 0.40  # Minimum safe distance to obstacles
         
         # Initialize state variables
         self.robot_state = "EXPLORE_FORWARD"
@@ -234,7 +234,7 @@ class MapExplorerRobot(Node):
         # Main navigation state machine
         if self.robot_state == "EXPLORE_FORWARD":
             # Check if path is clear ahead
-            if self.sensor_readings["front"] > self.clearance_threshold:
+            if self.sensor_readings["front"] > self.safe_distance:
                 # Check if we've moved far enough in this direction
                 if self.distance_since_last_turn > self.target_segment_length:
                     # Switch to turning state
@@ -287,7 +287,7 @@ class MapExplorerRobot(Node):
             self.robot_command.angular.z = self.rotation_velocity * self.turn_preference
             
             # Check if we've turned enough to resume forward motion
-            if self.sensor_readings["front"] > self.clearance_threshold * 1.5:
+            if self.sensor_readings["front"] > self.safe_distance * 1.5:
                 self.robot_state = "EXPLORE_FORWARD"
                 self.get_logger().info("Path now clear. Moving forward.")
                 self.distance_since_last_turn = 0.0
@@ -298,21 +298,21 @@ class MapExplorerRobot(Node):
     def _is_confined_space(self):
         """Detect if robot is in a confined space or corner."""
         # Check if front is obstructed
-        front_blocked = self.sensor_readings["front"] < self.clearance_threshold
+        front_blocked = self.sensor_readings["front"] < self.safe_distance
         
         # Check if sides are also restricted
         sides_restricted = (
-            self.sensor_readings["front_left"] < self.clearance_threshold or
-            self.sensor_readings["front_right"] < self.clearance_threshold
+            self.sensor_readings["front_left"] < self.safe_distance or
+            self.sensor_readings["front_right"] < self.safe_distance
         )
         
         # Check average space around robot
-        avg_clearance = (
+        avg_space = (
             self.sensor_readings["front"] +
             min(self.sensor_readings["front_left"], self.sensor_readings["front_right"])
-        ) / 2 < self.clearance_threshold
+        ) / 2 < self.safe_distance
         
-        return front_blocked and sides_restricted and avg_clearance
+        return front_blocked and sides_restricted and avg_space
     
     def _handle_confined_space(self):
         """Execute special maneuver to escape confined spaces."""
@@ -343,8 +343,8 @@ class MapExplorerRobot(Node):
     def _generate_segment_length(self):
         """Generate a variable segment length using modified Levy flight pattern."""
         # Apply Levy-like distribution (more short moves, occasional long ones)
-        if random() < 0.2:  # 20% chance of longer movement
-            return uniform(1.0, 2.0)
+        if random() < 0.6:  # 60% chance of longer movement
+            return uniform(1.0, 3.0)
         else:
             return uniform(0.5, 1.0)
     
