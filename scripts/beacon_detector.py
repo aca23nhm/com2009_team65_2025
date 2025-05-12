@@ -175,6 +175,8 @@ class BeaconDetector(Node):
         cv2.waitKey(0) 
 
     # Callback that handles turning in place to try and centre a beacon
+    # TODO - this doesnt like actually do anything because it isn't getting fresh camera images. we gotta
+    # go deal with that!!!!!
     def centre_pillar_callback(self):
         if not self.centering:
             return
