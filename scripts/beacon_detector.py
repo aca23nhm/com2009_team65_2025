@@ -108,7 +108,7 @@ class BeaconDetector(Node):
             clear_areas = self.image_has_clear_areas(img_mask, cz)
             self.get_logger().info(f"This image has clear areas: {clear_areas}")
             self.get_logger().info(f"White area in this image: {moments['m00']}.")
-            if moments['m00'] > 400000 and clear_areas and img_mask[cy, cz] == 255 or True:
+            if moments['m00'] > 400000 and clear_areas and img_mask[cz, cy] == 255 or True:
                 
                 cv2.circle(self.debug_img, (cy, cz), 10, (0, 0, 255), 2)
                 self.show_img(self.debug_img, "lines")
@@ -136,8 +136,6 @@ class BeaconDetector(Node):
             "IMPORTANT: Close the image pop-up window to exit."
         )
         cv2.waitKey(0) 
-
-
 
 
 def main(args=None):
