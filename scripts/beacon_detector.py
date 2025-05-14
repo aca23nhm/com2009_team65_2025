@@ -55,6 +55,8 @@ class BeaconDetector(Node):
 
         # Stop the camera callback from being annoying if the centrer callback is running
         self.centering = False
+        self.moments_for_turning = 0
+        self.move_rate = ''
 
         # constants
         self.m00_MINIMUM = 0
@@ -88,6 +90,10 @@ class BeaconDetector(Node):
         
         return any(map( self.does_row_contain_zeroes, rows)) and any(map( self.does_row_contain_ones, rows))
 
+    def pass_data_to_centrer(self, moments, img):
+        self.full_image = img
+        self.moments_for_turning = moments
+
     def get_colour_thresholds(self):
         if self.target_colour == "blue":
             return (80, 100, 50), (125, 255, 255)
@@ -103,9 +109,6 @@ class BeaconDetector(Node):
 
     def camera_callback(self, img_data):
 
-        if self.centering:
-            return
-
         try:
             cv_img = self.bridge.imgmsg_to_cv2(img_data, desired_encoding="bgr8")
         except CvBridgeError as e:
@@ -114,16 +117,16 @@ class BeaconDetector(Node):
 
         if self.waiting_for_image:
         
-            self.show_img(cv_img, "original")
+            #self.show_img(cv_img, "original")
         
             height, width, _ = cv_img.shape
-            self.get_logger().info(f"Height: {height}, Width: {width} of original image")
+            #self.get_logger().info(f"Height: {height}, Width: {width} of original image")
             crop_width = int(width * 0.8)     # roughly equal to the absolute values from Ass1 Part6
             crop_height = int(height * 0.375)
             crop_y0 = int((width / 2) - (crop_width / 2))
             crop_z0 = 0
             cropped_img = cv_img[crop_z0:crop_z0+crop_height, crop_y0:crop_y0+crop_width]
-            self.show_img(cropped_img, "cropped")
+            #self.show_img(cropped_img, "cropped")
 
 
             hsv_img = cv2.cvtColor(cropped_img, cv2.COLOR_BGR2HSV)
@@ -131,6 +134,11 @@ class BeaconDetector(Node):
             img_mask = cv2.inRange(hsv_img, lower, upper)
 
             moments = cv2.moments(img_mask)
+
+            if self.centering:
+                self.pass_data_to_centrer(moments, cv_img)
+                return
+            
             if moments['m00'] == 0:
                 self.get_logger().info("Stopping image processing here because m00 is zero.")
                 return
@@ -145,8 +153,7 @@ class BeaconDetector(Node):
                 # We have found something! lets try and turn towards it
 
                 # Hand it the data it needs (moments, the full image to save)
-                self.moments = moments
-                self.full_image = img_data
+                self.pass_data_to_centrer(moments, cv_img)
 
                 # Send a request ot the main ExplorationController for control of the robot's movement
                 control_request = ControlSharingReq.Request()
@@ -157,9 +164,7 @@ class BeaconDetector(Node):
                 self.centering = True
 
                 cv2.circle(self.debug_img, (cy, cz), 10, (0, 0, 255), 2)
-                self.show_img(self.debug_img, "lines")
-
-
+                #self.show_img(self.debug_img, "lines")
 
     
     def show_img(self, img, img_name, save_img=False): 
@@ -175,9 +180,8 @@ class BeaconDetector(Node):
         cv2.waitKey(0) 
 
     # Callback that handles turning in place to try and centre a beacon
-    # TODO - this doesnt like actually do anything because it isn't getting fresh camera images. we gotta
-    # go deal with that!!!!!
     # TODO also have it choose the most sensible direction to turn?
+    # TODO why is its movement so jittery?
     def centre_pillar_callback(self):
         if not self.centering:
             return
@@ -185,8 +189,8 @@ class BeaconDetector(Node):
         if self.stop_counter > 0:
             self.stop_counter -= 1
 
-        cy = get_cy(self.moments)
-        m00 = self.moments['m00']
+        cy = get_cy(self.moments_for_turning)
+        m00 = self.moments_for_turning['m00']
         vel_cmd = Twist()
 
         if m00 > 400000: # TODO determine some good moo minima
@@ -232,24 +236,24 @@ class BeaconDetector(Node):
         
         self.vel_pub.publish(vel_cmd)
 
-def save_image(self, img):
-        # Save snapshot - modified path
-    save_path = "/home/student/ros2_ws/src/com2009_team65_2025/snaps"
-    
-    os.makedirs(save_path, exist_ok=True)
-    filename = os.path.join(save_path, "target_beacon.jpg")
-    cv2.imwrite(filename, img)
-    self.get_logger().info(f"Saved beacon snapshot to: {filename}")
+    def save_image(self, img):
+        save_path = "/home/student/ros2_ws/src/com2009_team65_2025/snaps"
+        
+        os.makedirs(save_path, exist_ok=True)
+        filename = os.path.join(save_path, "target_beacon.jpg")
+        cv2.imwrite(filename, img)
+        self.get_logger().info(f"Saved beacon snapshot to: {filename}")
 
-    self.waiting_for_image = False
-    cv2.destroyAllWindows()    
+        self.waiting_for_image = False
+        cv2.destroyAllWindows()    
 
 
-def get_cy(moments):
-    return int(moments['m10'] / moments['m00'])
+def get_cy(moments, epsilon=1e-4):
+    print(f"m10: {moments['m10']}, m00: {moments['m00']}, epsilon: {epsilon}")
+    return int(moments['m10'] / (moments['m00'] + epsilon))
 
-def get_cz(moments):
-    return int(moments['m01'] / moments['m00'])
+def get_cz(moments, epsilon=1e-4):
+    return int(moments['m01'] / (moments['m00'] + epsilon))
 
 
 def main(args=None):
