@@ -195,6 +195,7 @@ class BeaconDetector(Node):
         height, width, _ = self.full_image.shape
         centre = int(height / 2)
 
+        # I think the m00 minima need to be much higher - see the funny picture
         if m00 > 400000: # TODO determine some good moo minima
             # blob detected
             if centre - self.CENTRE_OFFSET <= cy <= centre + self.CENTRE_OFFSET:
