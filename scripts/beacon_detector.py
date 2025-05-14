@@ -141,7 +141,6 @@ class BeaconDetector(Node):
                 return
             
             if moments['m00'] == 0:
-                self.get_logger().info("Stopping image processing here because m00 is zero.")
                 return
             cy = get_cy(moments)
             cz = get_cz(moments)
@@ -181,7 +180,6 @@ class BeaconDetector(Node):
         cv2.waitKey(0) 
 
     # Callback that handles turning in place to try and centre a beacon
-    # TODO also have it choose the most sensible direction to turn?
     # TODO why is its movement so jittery? probably cos of time to process 1080p image
     def centre_pillar_callback(self):
         if not self.centering:
