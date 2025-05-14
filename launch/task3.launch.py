@@ -1,6 +1,6 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, boolean_substitution
 from launch_ros.actions import Node
 import os
 
@@ -12,6 +12,7 @@ def generate_launch_description():
 
     in_simulator_arg = DeclareLaunchArgument(
         'in_simulator',
+        default_value='False',
         description='Boolean value - are we running in the simulator or not?'
     )
 
