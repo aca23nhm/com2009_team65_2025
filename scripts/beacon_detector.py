@@ -62,6 +62,7 @@ class BeaconDetector(Node):
         self.m00_MINIMUM = 0
         self.FAST_TURN_RATE = -0.5 # Values from tuos_simulations/colour_search
         self.SLOW_TURN_RATE = -0.1
+        self.CENTRE_OFFSET = 100 # pixels from the centre that we can stop in center_callback
 
         self.package_dir = get_package_share_directory('com2009_team65_2025')
         self.waiting_for_image = True
@@ -181,7 +182,7 @@ class BeaconDetector(Node):
 
     # Callback that handles turning in place to try and centre a beacon
     # TODO also have it choose the most sensible direction to turn?
-    # TODO why is its movement so jittery?
+    # TODO why is its movement so jittery? probably cos of time to process 1080p image
     def centre_pillar_callback(self):
         if not self.centering:
             return
@@ -193,9 +194,12 @@ class BeaconDetector(Node):
         m00 = self.moments_for_turning['m00']
         vel_cmd = Twist()
 
+        height, width, _ = self.full_image.shape
+        centre = int(height / 2)
+
         if m00 > 400000: # TODO determine some good moo minima
             # blob detected
-            if cy >= 560-100 and cy <= 560+100: # TODO change this to be non-fixed to 1080p
+            if centre - self.CENTRE_OFFSET <= cy <= centre + self.CENTRE_OFFSET:
                 if self.move_rate == 'slow':
                     self.move_rate = 'stop'
                     self.stop_counter = 30
@@ -209,14 +213,14 @@ class BeaconDetector(Node):
                 "\nMOVING FAST:\n"
                 "I can't see anything at the moment, scanning the area..."
             )
-            vel_cmd.angular.z = self.FAST_TURN_RATE
+            vel_cmd.angular.z = self.FAST_TURN_RATE * (-1 if cy < centre else 1)
             
         elif self.move_rate == 'slow':
             self.get_logger().info(
                 f"\nMOVING SLOW:\n"
                 f"A blob of colour of size {m00:.0f} pixels is in view at y-position: {cy:.0f} pixels."
             )
-            vel_cmd.angular.z = self.SLOW_TURN_RATE
+            vel_cmd.angular.z = self.SLOW_TURN_RATE * (-1 if cy < centre else 1)
         
         elif self.move_rate == 'stop' and self.stop_counter > 0:
             self.get_logger().info(
@@ -225,6 +229,7 @@ class BeaconDetector(Node):
             )
             vel_cmd.angular.z = 0.0
             self.centering = False
+            cv2.line(self.full_image, (cy, 0), (cy, height), (255, 0, 255), 1 ) # draw a line through the centroid
             self.save_image(self.full_image)
         
         else:
@@ -249,7 +254,6 @@ class BeaconDetector(Node):
 
 
 def get_cy(moments, epsilon=1e-4):
-    print(f"m10: {moments['m10']}, m00: {moments['m00']}, epsilon: {epsilon}")
     return int(moments['m10'] / (moments['m00'] + epsilon))
 
 def get_cz(moments, epsilon=1e-4):
