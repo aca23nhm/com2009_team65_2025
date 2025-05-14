@@ -22,7 +22,7 @@ def generate_launch_description():
         executable='beacon_detector.py',
         name='beacon_detector',
         output='screen',
-        parameters=[{'target_colour': LaunchConfiguration('target_colour')}]
+        parameters=[{'target_colour': LaunchConfiguration('target_colour'), 'in_simulator': True}] # TODO: add as actual param
     )
 
     slam_mapper_node = Node(
