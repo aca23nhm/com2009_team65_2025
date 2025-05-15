@@ -118,7 +118,7 @@ class BeaconDetector(Node):
 
         if self.waiting_for_image:
         
-            #self.show_img(cv_img, "original")
+
         
             height, width, _ = cv_img.shape
             #self.get_logger().info(f"Height: {height}, Width: {width} of original image")
@@ -127,8 +127,6 @@ class BeaconDetector(Node):
             crop_y0 = int((width / 2) - (crop_width / 2))
             crop_z0 = 0
             cropped_img = cv_img[crop_z0:crop_z0+crop_height, crop_y0:crop_y0+crop_width]
-            #self.show_img(cropped_img, "cropped")
-
 
             hsv_img = cv2.cvtColor(cropped_img, cv2.COLOR_BGR2HSV)
             lower, upper = self.get_colour_thresholds()
@@ -148,7 +146,7 @@ class BeaconDetector(Node):
             clear_areas = self.image_has_clear_areas(img_mask, cz)
             self.get_logger().info(f"This image has clear areas: {clear_areas}")
             self.get_logger().info(f"White area in this image: {moments['m00']}.")
-            if moments['m00'] > 400000 and clear_areas and img_mask[cz, cy] == 255 or True:
+            if moments['m00'] > 400000 and clear_areas and img_mask[cz, cy] == 255:
                 
                 # We have found something! lets try and turn towards it
 
@@ -164,7 +162,11 @@ class BeaconDetector(Node):
                 self.centering = True
 
                 cv2.circle(self.debug_img, (cy, cz), 10, (0, 0, 255), 2)
-                #self.show_img(self.debug_img, "lines")
+                if not self.in_simulator or True:
+                    self.save_image(cv_img, filename="original.jpg", debug=True)
+                    self.save_image(cropped_img, "cropped.jpg", debug=True)
+                    self.save_image(img_mask, 'img_mask.jpg', debug=True)
+                    self.save_image(self.debug_img, filename='lines_centroid.jpg', debug=True)
 
     
     def show_img(self, img, img_name, save_img=False): 
@@ -240,16 +242,17 @@ class BeaconDetector(Node):
         
         self.vel_pub.publish(vel_cmd)
 
-    def save_image(self, img):
-        save_path = "/home/student/ros2_ws/src/com2009_team65_2025/snaps"
+    def save_image(self, img, filename='target_beacon.jpg', debug=False):
+        save_path = "/home/student/ros2_ws/src/com2009_team65_2025/snaps" + '/debug' if debug else ''
         
         os.makedirs(save_path, exist_ok=True)
-        filename = os.path.join(save_path, "target_beacon.jpg")
+        filename = os.path.join(save_path, filename)
         cv2.imwrite(filename, img)
         self.get_logger().info(f"Saved beacon snapshot to: {filename}")
 
-        self.waiting_for_image = False
-        cv2.destroyAllWindows()    
+        if not debug:
+            self.waiting_for_image = False
+            cv2.destroyAllWindows()    
 
 
 def get_cy(moments, epsilon=1e-4):
