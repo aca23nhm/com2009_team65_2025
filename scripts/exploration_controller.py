@@ -70,13 +70,10 @@ class MapExplorerRobot(Node):
         
         # Environment mapping
         self.environment_width = 4.0
-        self.sector_width = 1.0
         self.grid_dimension = 3
+        self.sector_width = self.environment_width / self.grid_dimension
         self.visited_grid = np.zeros((self.grid_dimension, self.grid_dimension), dtype=int)
-        
-        # Mark center sectors as already visited (orange zone)
-        self.visited_grid[1:3, 1:3] = 1
-        
+
         # Current sector position
         self.current_sector = {"x": None, "y": None}
         
@@ -144,7 +141,7 @@ class MapExplorerRobot(Node):
         # Extract position data
         pos_x = odom_data.pose.pose.position.x
         pos_y = odom_data.pose.pose.position.y
-        
+
         # Store initial position as origin
         if not self.position_initialized:
             self.origin_x = pos_x
@@ -152,57 +149,68 @@ class MapExplorerRobot(Node):
             self.position_initialized = True
             self.previous_position["x"] = pos_x
             self.previous_position["y"] = pos_y
-            self.get_logger().info(f"Origin set: ({self.origin_x:.2f}, {self.origin_y:.2f})")
-        else:
-            # Calculate distance moved since last update
-            dx = pos_x - self.previous_position["x"]
-            dy = pos_y - self.previous_position["y"]
-            movement = sqrt(dx*dx + dy*dy)
-            self.distance_since_last_turn += movement
-            
-            # Update position history
-            self.previous_position["x"] = pos_x
-            self.previous_position["y"] = pos_y
-        
+            self.current_position["x"] = pos_x
+            self.current_position["y"] = pos_y
+
+            # ✅ Use actual position, not relative to origin
+            sector_x = int((pos_x + self.environment_width / 2) / self.sector_width)
+            sector_y = int((pos_y + self.environment_width / 2) / self.sector_width)
+            sector_x = max(0, min(sector_x, self.grid_dimension - 1))
+            sector_y = max(0, min(sector_y, self.grid_dimension - 1))
+
+            self.current_sector["x"] = sector_x
+            self.current_sector["y"] = sector_y
+            self.visited_grid[sector_y, sector_x] = 1
+
+            self.get_logger().info(
+                f"Origin set: ({self.origin_x:.2f}, {self.origin_y:.2f}) | "
+                f"Initial sector marked visited: ({sector_x + 1}, {sector_y + 1})"
+            )
+            return
+
+        # Calculate distance moved since last update
+        dx = pos_x - self.previous_position["x"]
+        dy = pos_y - self.previous_position["y"]
+        movement = sqrt(dx * dx + dy * dy)
+        self.distance_since_last_turn += movement
+
+        # Update position history
+        self.previous_position["x"] = pos_x
+        self.previous_position["y"] = pos_y
+
         # Update current position
         self.current_position["x"] = pos_x
         self.current_position["y"] = pos_y
-        
+
         # Calculate position relative to origin
         rel_x = pos_x - self.origin_x
         rel_y = pos_y - self.origin_y
-        
+
         # Determine current sector (grid cell)
         sector_x = int((rel_x + self.environment_width / 2) / self.sector_width)
         sector_y = int((rel_y + self.environment_width / 2) / self.sector_width)
-        
-        # Ensure sector indices are within bounds
         sector_x = max(0, min(sector_x, self.grid_dimension - 1))
         sector_y = max(0, min(sector_y, self.grid_dimension - 1))
-        
+
         # Convert to 1-based coordinates for logging
         display_x = sector_x + 1
         display_y = sector_y + 1
-        
+
         # If we entered a new sector, mark it as visited
         if self.current_sector["x"] != sector_x or self.current_sector["y"] != sector_y:
-            # Only mark non-orange sectors as visited
-            if not (1 <= sector_x <= 2 and 1 <= sector_y <= 2):
-                if self.visited_grid[sector_y, sector_x] == 0:
-                    self.visited_grid[sector_y, sector_x] = 1
-                    
-                    # Calculate total visited sectors
-                    total_visited = np.sum(self.visited_grid)
-                    
-                    self.get_logger().info(
-                        f"Entered new sector: ({display_x}, {display_y}). "
-                        f"Total visited: {total_visited}/12."
-                    )
-        
+            if self.visited_grid[sector_y, sector_x] == 0:
+                self.visited_grid[sector_y, sector_x] = 1
+
+                total_visited = np.sum(self.visited_grid)
+                self.get_logger().info(
+                    f"Entered new sector: ({display_x}, {display_y}). "
+                    f"Total visited: {total_visited}/9."
+                )
+
         # Update current sector
         self.current_sector["x"] = sector_x
         self.current_sector["y"] = sector_y
-        
+
         # Log position periodically (every 5 seconds)
         self.get_logger().info(
             f"Position: ({rel_x:.2f}, {rel_y:.2f}) | Sector: ({display_x}, {display_y})",
