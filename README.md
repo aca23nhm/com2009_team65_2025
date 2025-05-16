@@ -22,7 +22,9 @@ In a terminal, navigate to `~/ros2_ws/src` and run these commands:
 
 `source ~/.bashrc`, and
 
-`ros2 launch com2009_team65_2025 task3.launch.py target_colour:=COLOUR`.
+`ros2 launch com2009_team65_2025 task3.launch.py target_colour:=COLOUR`,
+
+where COLOUR must be either `red`, `yellow`, `blue` or `green`.
 
 This last command starts the robot running, so make sure to place the robot in the arena
 before this.
