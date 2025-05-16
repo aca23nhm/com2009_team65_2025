@@ -328,7 +328,7 @@ class MapExplorerRobot(Node):
         
         # Try to back up if there's space
         if self.sensor_readings["rear"] > 0.3:
-            self.robot_command.linear.x = -0.1  # Gentle reverse
+            self.robot_command.linear.x = -0.05  # Gentle reverse
         else:
             self.robot_command.linear.x = 0.0  # Can't back up
         

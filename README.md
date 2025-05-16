@@ -60,7 +60,7 @@ This process is repeated throughout the exploration, allowing the robot to safel
 The arena is abstracted as a 3×3 grid. The robot updates a zone-tracking dictionary with its estimated (x, y) coordinates, transformed from odometry data. When a new zone is entered, it's marked as visited to avoid redundant navigation. This zone-awareness is used to guide turning decisions.
 
 ## Beacon Detection and Photo Capture
-In parallel with navigation, a dedicated ROS2 node named BeaconDetector runs continuously. This node subscribes to the /camera/image_raw topic and uses OpenCV to process incoming frames.
+In parallel with navigation, a dedicated ROS2 node named BeaconDetector runs continuously. This is being done in beacon_detector.py. This node subscribes to the /camera/image_raw topic and uses OpenCV to process incoming frames.
 
 The detection pipeline includes:
 
@@ -77,9 +77,9 @@ The detection pipeline includes:
 - Once a valid beacon is detected and centered in view, the node saves the image locally as snaps/target_beacon.jpg. The detection loop halts once the image is captured successfully.
 
 ## SLAM and Map Saving
-Simultaneously, the application runs Cartographer SLAM, a 2D mapping solution that combines LiDAR and odometry data to incrementally build a representation of the environment. The map is published to the /map topic and can be viewed in real time using rviz2.
+Simultaneously, the application runs Cartographer SLAM, a 2D mapping solution that combines LiDAR and odometry data through slam_mapper.py to incrementally build a representation of the environment. The map is published to the /map topic and can be viewed in real time using rviz2.
 
-At the end of the 3-minute run (or upon a shutdown signal), the current map is saved as a PGM/PNG image with a YAML metadata file using the map_saver node. This map is stored under the /maps/ directory and named arena_map.png.
+At the end of the 3-minute run (or upon a shutdown signal), the current map is saved as a PNG image with a YAML metadata file using the map_saver node. This map is stored under the /maps/ directory and named arena_map.png.
 
 This functionality ensures that the robot not only explores the environment but also leaves behind a usable record of the space it covered.
 
