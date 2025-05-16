@@ -2,24 +2,19 @@
 
 import rclpy
 from rclpy.node import Node
-from nav_msgs.msg import OccupancyGrid
+from nav2_msgs.srv import SaveMap
 from std_msgs.msg import Bool
-import numpy as np
-import yaml
 import os
-import cv2
+import time
 
 class SLAMMapper(Node):
     def __init__(self):
         super().__init__("slam_mapper")
 
-        # Subscribers
-        self.subscription = self.create_subscription(
-            OccupancyGrid,
-            '/map',
-            self.map_callback,
-            100
-        )
+        self.maps_dir = '/home/student/ros2_ws/src/com2009_team65_2025/maps'
+        os.makedirs(self.maps_dir, exist_ok=True)
+
+        self.save_map_client = self.create_client(SaveMap, '/map_saver/save_map')
 
         self.done_subscription = self.create_subscription(
             Bool,
@@ -28,55 +23,39 @@ class SLAMMapper(Node):
             10
         )
 
-        self.latest_map = None
-        self.exploration_done = False
-
-        # Set the path to the maps directory (using the path you specified)
-        self.maps_dir = '/home/student/ros2_ws/src/com2009_team65_2025/maps'
-        os.makedirs(self.maps_dir, exist_ok=True)
-
-    def map_callback(self, msg):
-        self.latest_map = msg
-
     def exploration_done_callback(self, msg):
-        if msg.data and self.latest_map:
-            self.get_logger().info("Exploration complete. Saving map...")
-            self.save_map(self.latest_map)
+        if msg.data:
+            self.get_logger().info("Exploration complete. Attempting to save map...")
 
-    def save_map(self, msg):
-        # Convert occupancy grid data to image
-        width = msg.info.width
-        height = msg.info.height
-        data = np.array(msg.data).reshape((height, width))
-        img = np.zeros((height, width, 3), dtype=np.uint8)
-        img[data == 0] = [255, 255, 255]      # Free
-        img[data == 100] = [0, 0, 0]          # Occupied
-        img[data == -1] = [128, 128, 128]     # Unknown
+            if not self.save_map_client.wait_for_service(timeout_sec=60.0):
+                self.get_logger().warn("❌ /map_saver/save_map service is not available.")
+                return
 
-        # Save as PNG
-        png_path = os.path.join(self.maps_dir, 'arena_map.png')
-        cv2.imwrite(png_path, img)
+            map_base_path = os.path.join(self.maps_dir, 'arena_map')
+            request = SaveMap.Request()
+            request.map_url = map_base_path
+            request.image_format = 'png'
+            request.free_thresh = 0.25
+            request.occupied_thresh = 0.65
 
-        # Save YAML metadata
-        yaml_path = os.path.join(self.maps_dir, 'arena_map.yaml')
-        map_metadata = {
-            'image': 'arena_map.png',
-            'resolution': msg.info.resolution,
-            'origin': [
-                msg.info.origin.position.x,
-                msg.info.origin.position.y,
-                0.0
-            ],
-            'negate': 0,
-            'occupied_thresh': 0.65,
-            'free_thresh': 0.196
-        }
+            future = self.save_map_client.call_async(request)
+            rclpy.spin_until_future_complete(self, future, timeout_sec=30.0)
 
-        with open(yaml_path, 'w') as file:
-            yaml.dump(map_metadata, file)
-
-        self.get_logger().info(f"Map saved to {png_path} and {yaml_path}")
-
+            # Check if files were actually created
+            time.sleep(1.0)  # Brief delay to ensure files are written
+            yaml_file = f"{map_base_path}.yaml"
+            png_file = f"{map_base_path}.png"
+            
+            if os.path.exists(yaml_file) and os.path.exists(png_file):
+                self.get_logger().info(f"✅ Map saved successfully (verified files exist)")
+                self.get_logger().info(f"  - {yaml_file}")
+                self.get_logger().info(f"  - {png_file}")
+            else:
+                self.get_logger().warn("❌ Map files not found after save attempt")
+                if not os.path.exists(yaml_file):
+                    self.get_logger().warn(f"  - Missing: {yaml_file}")
+                if not os.path.exists(png_file):
+                    self.get_logger().warn(f"  - Missing: {png_file}")
 
 def main(args=None):
     rclpy.init(args=args)
@@ -84,7 +63,6 @@ def main(args=None):
     rclpy.spin(node)
     node.destroy_node()
     rclpy.shutdown()
-
 
 if __name__ == '__main__':
     main()

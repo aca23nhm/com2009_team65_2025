@@ -103,7 +103,7 @@ class BeaconDetector(Node):
         elif self.target_colour == "green":
             return (74, 150, 50), (90, 255, 255)
         elif self.target_colour == "yellow":
-            return (20, 120, 50), (30, 255, 255)
+            return (20, 100, 100), (30, 255, 255)
         else:
             self.get_logger().warn(f"Unknown target colour: {self.target_colour}, defaulting to yellow.")
             return (20, 120, 50), (30, 255, 255)

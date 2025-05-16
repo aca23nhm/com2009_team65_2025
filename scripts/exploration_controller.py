@@ -1,575 +1,515 @@
 #!/usr/bin/env python3
 
-from math import atan2, pi, sqrt
-import time
-import os
 import rclpy
-import numpy as np
-
-from ament_index_python.packages import get_package_share_directory
-from geometry_msgs.msg import Twist
-from nav_msgs.msg import Odometry
-from rclpy.duration import Duration
 from rclpy.node import Node
 from rclpy.signals import SignalHandlerOptions
+import numpy as np
+import time
+import os
+from math import sqrt, atan2, cos, sin, pi
+from random import random, uniform
+from functools import partial
+
+# Import ROS2 message and service types
+from geometry_msgs.msg import Twist
 from sensor_msgs.msg import LaserScan
+from nav_msgs.msg import Odometry
 from std_msgs.msg import Bool
 from cartographer_ros_msgs.srv import FinishTrajectory
-from com2009_team65_2025.srv import ControlSharingReq
+from rclpy.duration import Duration
 
 
-class Exploration(Node):
-
+class MapExplorerRobot(Node):
+    """
+    An autonomous robot controller that explores an environment and builds a map.
+    Uses a combination of strategies including obstacle avoidance and randomized
+    motion patterns to maximize coverage of the environment.
+    """
+    
     def __init__(self):
-        super().__init__("exploration")
-
-        # Publisher for velocity commands
-        self.vel_pub = self.create_publisher(
-            msg_type=Twist,
-            topic="cmd_vel",
-            qos_profile=10,
-        )
-
-        # Subscriber for LiDAR data
-        self.scan_sub = self.create_subscription(
-            LaserScan,
-            'scan',
-            self.scan_callback,
-            10
-        )
-
-        # Create subscriber for odometry data
-        self.odom_sub = self.create_subscription(
-            Odometry,
-            'odom',
-            self.odom_callback,
-            10
-        )
-
-        # Create a server for the control taker overer
-        self.control_relinquisher = self.create_service(
-            srv_type=ControlSharingReq,
-            srv_name='exploration_controller_control_server',
-            callback = self.control_relinquisher_callback
-        )
-
-        self.done_pub = self.create_publisher(Bool, '/exploration_done', 10)
-
-        self.finish_traj_client = self.create_client(FinishTrajectory, "finish_trajectory")
-
-        self.start_time = self.get_clock().now()
-        self.exploration_duration = 180.0
-        self.exploration_finished = False
-
-        # Initialise position tracking variables
-        self.initial_pose_set = False
-        self.x0 = 0.0
-        self.y0 = 0.0
-        self.current_x = 0.0
-        self.current_y = 0.0
-        self.turn_directions = []
-        self.max_memory = 3
-
-        # Initialise variables to hold LiDAR data
-        self.obstacle_distance_front = float('inf')  # Default to "no obstacle"
-        self.obstacle_distance_left = float('inf')
-        self.obstacle_distance_right = float('inf')
-        self.lidar_data_received = False  # Flag to track if we've received LiDAR data
-
-        # Initialise velocity message
-        self.vel = Twist()
-
-        # Initialise exploration variables
-        self.state = "FORWARD"  # Initial state
-        self.turn_direction = 1  # 1 for left, -1 for right
-        self.stopped = False
-
-        # Set parameters for exploration
-        self.safe_distance = 0.40 # Minimum distance to obstacles (metres)
-        self.forward_speed = 0.15  # Linear speed (m/s)
-        self.turn_speed = 0.6  # Angular speed (rad/s)
-
-        # Levy flight parameters for improved exploration
-        self.min_straight_distance = 0.5  # Min distance to travel straight (metres)
-        self.max_straight_distance = 2.0  # Max distance to travel straight (metres)
-        self.current_straight_target = self.generate_levy_distance()
-        self.distance_traveled_since_turn = 0.0
-        self.last_position_x = 0.0
-        self.last_position_y = 0.0
-
-        # Arena and zone tracking
-        self.arena_size = 4.0  # 4x4 meter arena
-        self.zone_size = 1.0  # 1x1 meter zones
-        self.num_zones = 3 # 3x3 grid of zones
-
-        # Initialise visited zones
-        # 2D array: 0 = unvisited, 1 = visited
-        self.visited_zones = np.zeros((self.num_zones, self.num_zones), dtype = int)
-
-        # Mark the the central orange zones as visited
-        self.visited_zones[1:3, 1:3] = 1
-
-        # Current zone tracking
-        self.current_zone_x = None
-        self.current_zone_y = None
-
-        self.corner_avoidance_multiplier = 1.6  # Turn faster in corners
-
-        # Create a timer for the control loop (10Hz)
-        self.control_timer = self.create_timer(0.1, self.control_loop_callback)
-
-        # Boolean value that enables the beacon detector to take control of the robot's movement when needed.
-        self.has_control = True
-
-        self.get_logger().info("Exploration node initialised. Starting autonomous exploration.")
-
-        self.shutdown = False
-
-    def scan_callback(self, msg: LaserScan):
-        """
-        Process incoming LaserScan messages from the robot's LiDAR sensor.
-        """
-        # Get the ranges array from the message
-        ranges = np.array(msg.ranges)
-
-        # Handle out-of-range values (for real robots vs simulation)
-        # In simulation, out-of-range is inf, but on real robots it's 0.0
-        ranges[(ranges == 0.0) | (ranges == float('inf'))] = msg.range_max
-
-        # Define sectors around the robot
-        front_center_indices = list(range(350, 360)) + list(range(0, 10))  # Narrower front
-        front_left_indices = list(range(10, 30))  # 10-30 degrees left of center
-        front_right_indices = list(range(330, 350))  # 10-30 degrees right of center
-        left_indices = list(range(30, 90))  # Wider left
-        right_indices = list(range(270, 330))  # Wider right
-        rear_indices = list(range(170, 190))  # Approximately behind the robot
-
-        # Extract sector readings for all sectors
-        front_center_ranges = ranges[front_center_indices]
-        front_left_ranges = ranges[front_left_indices]
-        front_right_ranges = ranges[front_right_indices]
-        left_ranges = ranges[left_indices]
-        right_ranges = ranges[right_indices]
-        rear_ranges = ranges[rear_indices]
-
-        # Filter and get minimum distances for all sectors
-        valid_front_center = front_center_ranges[(front_center_ranges != float('inf')) & (front_center_ranges > 0.0)]
-        valid_front_left = front_left_ranges[(front_left_ranges != float('inf')) & (front_left_ranges > 0.0)]
-        valid_front_right = front_right_ranges[(front_right_ranges != float('inf')) & (front_right_ranges > 0.0)]
-        valid_left = left_ranges[(left_ranges != float('inf')) & (left_ranges > 0.0)]
-        valid_right = right_ranges[(right_ranges != float('inf')) & (right_ranges > 0.0)]
-        valid_rear = rear_ranges[(rear_ranges != float('inf')) & (rear_ranges > 0.0)]
-
-        # Update minimum distances in each sector
-        self.obstacle_distance_front_center = float(np.min(valid_front_center)) if len(valid_front_center) > 0 else msg.range_max
-        self.obstacle_distance_front_left = float(np.min(valid_front_left)) if len(valid_front_left) > 0 else msg.range_max
-        self.obstacle_distance_front_right = float(np.min(valid_front_right)) if len(valid_front_right) > 0 else msg.range_max
-        self.obstacle_distance_left = float(np.min(valid_left)) if len(valid_left) > 0 else msg.range_max
-        self.obstacle_distance_right = float(np.min(valid_right)) if len(valid_right) > 0 else msg.range_max
-        self.obstacle_distance_rear = float(np.min(valid_rear)) if len(valid_rear) > 0 else msg.range_max
-
-        # Update minimum distance in the front sector
-        self.obstacle_distance_front = min(
-            self.obstacle_distance_front_center,
-            self.obstacle_distance_front_left,
-            self.obstacle_distance_front_right
-        )
-
-        # Update flag to indicate that LiDAR data has been received
-        self.lidar_data_received = True
-
-    def odom_callback(self, msg: Odometry):
-        """
-        Process odometry data to track the robot's position and monitor zones.
-        """
-        # Extract position from odometry message
-        x = msg.pose.pose.position.x
-        y = msg.pose.pose.position.y
-
-        # Calculate distance moved since last update
-        if self.initial_pose_set:
-            dx = x - self.last_position_x
-            dy = y - self.last_position_y
-            distance_moved = sqrt(dx * dx + dy * dy)
-            self.distance_traveled_since_turn += distance_moved
-
-        # Store initial position for reference
-        if not self.initial_pose_set:
-            self.x0 = x
-            self.y0 = y
-            self.initial_pose_set = True
-            self.last_position_x = x
-            self.last_position_y = y
-            self.get_logger().info(f"Initial position set: x = {self.x0:.2f}, y = {self.y0:.2f}")
-        else:
-            self.last_position_x = x
-            self.last_position_y = y
-
-        # Update current position
-        self.current_x = x
-        self.current_y = y
-
-        # Calculate relative position
-        dx = x - self.x0
-        dy = y - self.y0
-
-        # Determine current zone
-        zone_x_idx = int((dx + self.arena_size / 2) / self.zone_size)
-        zone_y_idx = int((dy + self.arena_size / 2) / self.zone_size)
-
-        # Ensure zone indices are within bounds
-        zone_x_idx = max(0, min(zone_x_idx, self.num_zones - 1))
-        zone_y_idx = max(0, min(zone_y_idx, self.num_zones - 1))
-
-        # Convert to 1-based for reporting and user interface
-        zone_x = zone_x_idx + 1
-        zone_y = zone_y_idx + 1
-
-        # If entered a new zone, mark it as visited
-        if self.current_zone_x != zone_x_idx or self.current_zone_y != zone_y_idx:
-            # Only mark zones as visited
-            if not (2 <= zone_x <= 3 and 2 <= zone_y <= 3):  # Adjusted for 1-based reporting
-                if self.visited_zones[zone_y_idx, zone_x_idx] == 0:  # Still use 0-based for array
-                    self.visited_zones[zone_y_idx, zone_x_idx] = 1
-
-                    # Calculate the total number of zones visited
-                    zones_visited = np.sum(self.visited_zones)   # Subtract the 4 center zones
-
-                    self.get_logger().info(
-                        f"New zone entered: ({zone_x}, {zone_y}). "
-                        f"Total zones visited: {zones_visited}/12."
-                    )
-
-        # Update current zone (store 0-based for internal use)
-        self.current_zone_x = zone_x_idx
-        self.current_zone_y = zone_y_idx
-
-        # Log position periodically
-        self.get_logger().info(f"Position: dx = {dx:.2f}m, dy = {dy:.2f}m | Zone: ({zone_x}, {zone_y})", throttle_duration_sec = 5)
-
-    def control_relinquisher_callback(self, request, response):
-        if request.giving_back:
-            self.has_control = True
-            response.do_you_have_control = False
-        else:
-            self.has_control = False
-            self.vel_pub.publish(Twist()) # zero out our velocity
-            response.do_you_have_control = True    
-        return response
-
-    def generate_levy_distance(self):
-        """
-        Generate a Levy flight distance for straight-line travel.
-        """
-        # Apply Levy flight distribution (approximated)
-        # More small movements, occasional longer ones
-        if np.random.random() < 0.2:  # 20% chance of longer movement
-            return np.random.uniform(1.0, self.max_straight_distance)
-        else:
-            return np.random.uniform(self.min_straight_distance, 1.0)
-
-    def is_in_tight_space(self):
-        """
-        Detect if robot is in a tight space or corner that requires special handling.
-        """
-        # Front obstacle is close
-        front_close = self.obstacle_distance_front < self.safe_distance * 1.1
-
-        # At least one side is also restricted
-        side_close = (
-            self.obstacle_distance_front_left < self.safe_distance * 1.1 or
-            self.obstacle_distance_front_right < self.safe_distance * 1.1
-        )
-
-        # Overall space is restricted
-        avg_space_restricted = (
-            (self.obstacle_distance_front +
-            min(self.obstacle_distance_front_left,
-                self.obstacle_distance_front_right)) / 2
-        ) < self.safe_distance
-
-        return front_close and side_close and avg_space_restricted
-
-    def handle_tight_space(self):
-        """
-        Special manoeuvre for tight spaces or corners.
-        """
-        self.get_logger().info("Tight space detected - performing escape manoeuvre.")
-
-        # Try to back up if there's space behind
-        if self.obstacle_distance_rear > 0.3:
-            self.vel.linear.x = -0.1  # Gentle reverse
-        else:
-            self.vel.linear.x = 0.0  # Can't back up
-
-        # Turn with increased speed to escape the tight space
-        # Use the direction with more space
-        if self.obstacle_distance_left > self.obstacle_distance_right:
-            turn_dir = 1  # Left
-        else:
-            turn_dir = -1  # Right
-
-        self.vel.angular.z = self.turn_speed * self.corner_avoidance_multiplier * turn_dir
-
-        if self.has_control:
-            self.vel_pub.publish(self.vel)
-
-        # Reset straight line travel target
-        self.distance_traveled_since_turn = 0.0
-        self.current_straight_target = self.generate_levy_distance()
-
-        return True
-
-    def get_direction_bias(self):
-        """
-        Calculate a bias for direction selection based on unexplored zones.
-        """
-        if self.current_zone_x is None or self.current_zone_y is None:
-            return 0  # No bias if we don't know position yet
-
-        # Check which zones are unexplored in each cardinal direction
-        unexplored_left = 0
-        unexplored_right = 0
-        unexplored_front = 0
-        unexplored_back = 0
-
-        # Check to the left (negative x direction in the grid)
-        for i in range(self.current_zone_x):
-            for j in range(self.num_zones):
-                if self.visited_zones[j, i] == 0 and not (1 <= i <= 2 and 1 <= j <= 2):
-                    unexplored_left += 1
-
-        # Check to the right (positive x direction in the grid)
-        for i in range(self.current_zone_x + 1, self.num_zones):
-            for j in range(self.num_zones):
-                if self.visited_zones[j, i] == 0 and not (1 <= i <= 2 and 1 <= j <= 2):
-                    unexplored_right += 1
-
-        # Check forward (negative y direction in the grid)
-        for j in range(self.current_zone_y):
-            for i in range(self.num_zones):
-                if self.visited_zones[j, i] == 0 and not (1 <= i <= 2 and 1 <= j <= 2):
-                    unexplored_front += 1
-
-        # Check backward (positive y direction in the grid)
-        for j in range(self.current_zone_y + 1, self.num_zones):
-            for i in range(self.num_zones):
-                if self.visited_zones[j, i] == 0 and not (1 <= i <= 2 and 1 <= j <= 2):
-                    unexplored_back += 1
-
-        # Log the unexplored counts
-        self.get_logger().info(
-            f"Unexplored zones - Left: {unexplored_left}, Right: {unexplored_right}, "
-            f"Front: {unexplored_front}, Back: {unexplored_back}",
-            throttle_duration_sec=5
-        )
-
-        # Return a bias: positive for left, negative for right
-        # If there's a significant difference, bias toward that direction
-        if unexplored_left > unexplored_right + 1:
-            return 0.7  # Bias toward left
-        elif unexplored_right > unexplored_left + 1:
-            return -0.7  # Bias toward right
-        else:
-            return 0  # No bias
-
-    def select_turn_direction(self):
-        """
-        Intelligent turn direction selection based on multiple factors.
-        """
-        direction_scores = {
-            "left": 0.0,
-            "right": 0.0
+        """Initialize the explorer robot with necessary publishers, subscribers and parameters."""
+        super().__init__('autonomous_explorer')
+        
+        # Set up robot motion control
+        self.motion_publisher = self.create_publisher(Twist, 'cmd_vel', 10)
+        
+        # Set up sensor and telemetry subscribers
+        self.range_subscriber = self.create_subscription(
+            LaserScan, 'scan', self._process_lidar_data, 10)
+        self.position_subscriber = self.create_subscription(
+            Odometry, 'odom', self._update_position_data, 10)
+        
+        # Set up mapping system interaction
+        self.exploration_complete_publisher = self.create_publisher(Bool, '/exploration_done', 10)
+        self.trajectory_service = self.create_client(FinishTrajectory, "finish_trajectory")
+        
+        # Setup robot motion parameters
+        self.linear_velocity = 0.20  # Forward speed in m/s
+        self.rotation_velocity = 0.6  # Rotation speed in rad/s
+        self.safe_distance = 0.40  # Minimum safe distance to obstacles
+        
+        # Initialize state variables
+        self.robot_state = "EXPLORE_FORWARD"
+        self.robot_command = Twist()
+        self.lidar_initialized = False
+        self.system_shutdown = False
+        
+        # Position tracking
+        self.position_initialized = False
+        self.origin_x = 0.0
+        self.origin_y = 0.0
+        self.current_position = {"x": 0.0, "y": 0.0}
+        self.previous_position = {"x": 0.0, "y": 0.0}
+        
+        # Movement strategy
+        self.turn_preference = 1  # Initial turn preference (1=clockwise, -1=counter-clockwise)
+        self.turn_history = []
+        self.memory_length = 3
+        self.distance_since_last_turn = 0.0
+        self.target_segment_length = self._generate_segment_length()
+        
+        # Environment mapping
+        self.environment_width = 4.0
+        self.grid_dimension = 3
+        self.sector_width = self.environment_width / self.grid_dimension
+        self.visited_grid = np.zeros((self.grid_dimension, self.grid_dimension), dtype=int)
+
+        # Current sector position
+        self.current_sector = {"x": None, "y": None}
+        
+        # Sensor data storage
+        self.sensor_readings = {
+            "front": float('inf'),
+            "front_left": float('inf'),
+            "front_right": float('inf'),
+            "left": float('inf'),
+            "right": float('inf'),
+            "rear": float('inf')
         }
-
-        # 1. Obstacle distances (prefer the direction with more space)
-        left_space = self.obstacle_distance_left
-        right_space = self.obstacle_distance_right
-
-        direction_scores["left"] += left_space * 1.0
-        direction_scores["right"] += right_space * 1.0
-
-        # 2. Direction bias from zones and other sources
-        bias = self.get_direction_bias()
-        if bias > 0:
-            direction_scores["left"] += abs(bias) * 0.5
-        else:
-            direction_scores["right"] += abs(bias) * 0.5
-
-        # 3. Avoid repetitive patterns
-        if len(self.turn_directions) >= 3:
-            if self.turn_directions[-3:] == [1,1,1]:
-                direction_scores["right"] += 1.0  # Bias away from left
-            elif self.turn_directions[-3:] == [-1,-1,-1]:
-                direction_scores["left"] += 1.0  # Bias away from right
-
-        # 4. Levy flight randomness
-        # Occasionally surprising choice
-        if np.random.random() < 0.15:  # 15% chance
-            if np.random.random() < 0.5:
-                direction_scores["left"] += 1.0
+        
+        # Exploration timer
+        self.start_time = self.get_clock().now()
+        self.max_exploration_time = 180.0  # 3 minutes
+        self.exploration_ended = False
+        
+        # Start control loop at 10Hz
+        self.control_loop = self.create_timer(0.1, self._navigation_control_loop)
+        
+        self.get_logger().info("Map Explorer initialized - beginning autonomous navigation")
+    
+    def _process_lidar_data(self, scan_data: LaserScan):
+        """Process incoming laser scan data to detect obstacles in different directions."""
+        # Convert scan data to numpy array for efficient processing
+        ranges = np.array(scan_data.ranges)
+        
+        # Replace invalid readings with max range
+        invalid_mask = (ranges == 0.0) | (ranges == float('inf'))
+        ranges[invalid_mask] = scan_data.range_max
+        
+        # Define angle sectors (in degrees)
+        sectors = {
+            "front": list(range(350, 360)) + list(range(0, 10)),
+            "front_left": list(range(10, 30)),
+            "front_right": list(range(330, 350)),
+            "left": list(range(30, 90)),
+            "right": list(range(270, 330)),
+            "rear": list(range(170, 210))
+        }
+        
+        # Process each sector
+        for sector_name, indices in sectors.items():
+            sector_ranges = ranges[indices]
+            valid_readings = sector_ranges[(sector_ranges != float('inf')) & (sector_ranges > 0.0)]
+            
+            if len(valid_readings) > 0:
+                self.sensor_readings[sector_name] = float(np.min(valid_readings))
             else:
-                direction_scores["right"] += 1.0
-
-        # Choose direction with highest score
-        if direction_scores["left"] > direction_scores["right"]:
-            direction = 1  # Turn left
-        else:
-            direction = -1  # Turn right
-
-        # Log the decision factors
-        self.get_logger().info(
-            f"Turn decision - Left score: {direction_scores['left']:.2f}, "
-            f"Right score: {direction_scores['right']:.2f}, "
-            f"Direction: {'LEFT' if direction == 1 else 'RIGHT'}"
+                self.sensor_readings[sector_name] = scan_data.range_max
+        
+        # Calculate combined front distance
+        self.sensor_readings["front"] = min(
+            self.sensor_readings["front"],
+            self.sensor_readings["front_left"],
+            self.sensor_readings["front_right"]
         )
+        
+        # Set flag that we've received lidar data
+        self.lidar_initialized = True
+    
+    def _update_position_data(self, odom_data: Odometry):
+        """Track robot position and update coverage map."""
+        # Extract position data
+        pos_x = odom_data.pose.pose.position.x
+        pos_y = odom_data.pose.pose.position.y
 
-        return direction
+        # Store initial position as origin
+        if not self.position_initialized:
+            self.origin_x = pos_x
+            self.origin_y = pos_y
+            self.position_initialized = True
+            self.previous_position["x"] = pos_x
+            self.previous_position["y"] = pos_y
+            self.current_position["x"] = pos_x
+            self.current_position["y"] = pos_y
 
-    def control_loop_callback(self):
-        """
-        Main control loop that handles the robot's behaviour.
-        """
-        # 1) Check if time is up
-        if not self.exploration_finished:
-            now = self.get_clock().now()
-            elapsed_s = (now - self.start_time).nanoseconds * 1e-9
-            if elapsed_s >= self.exploration_duration:
-                self.exploration_finished = True
-                self.get_logger().info("180s have elapsed. Stopping exploration and saving map.")
-                self.on_shutdown()
-                return
+            # ✅ Use actual position, not relative to origin
+            sector_x = int((pos_x + self.environment_width / 2) / self.sector_width)
+            sector_y = int((pos_y + self.environment_width / 2) / self.sector_width)
+            sector_x = max(0, min(sector_x, self.grid_dimension - 1))
+            sector_y = max(0, min(sector_y, self.grid_dimension - 1))
 
-        # 2) If we've already shut down or done exploring, do nothing
-        if self.shutdown or not self.lidar_data_received:
+            self.current_sector["x"] = sector_x
+            self.current_sector["y"] = sector_y
+            self.visited_grid[sector_y, sector_x] = 1
+
+            self.get_logger().info(
+                f"Origin set: ({self.origin_x:.2f}, {self.origin_y:.2f}) | "
+                f"Initial sector marked visited: ({sector_x + 1}, {sector_y + 1})"
+            )
             return
 
-        # Check for tight spaces or multiple obstacles
-        if self.is_in_tight_space():
-            if self.handle_tight_space():
+        # Calculate distance moved since last update
+        dx = pos_x - self.previous_position["x"]
+        dy = pos_y - self.previous_position["y"]
+        movement = sqrt(dx * dx + dy * dy)
+        self.distance_since_last_turn += movement
+
+        # Update position history
+        self.previous_position["x"] = pos_x
+        self.previous_position["y"] = pos_y
+
+        # Update current position
+        self.current_position["x"] = pos_x
+        self.current_position["y"] = pos_y
+
+        # Calculate position relative to origin
+        rel_x = pos_x - self.origin_x
+        rel_y = pos_y - self.origin_y
+
+        # Determine current sector (grid cell)
+        sector_x = int((rel_x + self.environment_width / 2) / self.sector_width)
+        sector_y = int((rel_y + self.environment_width / 2) / self.sector_width)
+        sector_x = max(0, min(sector_x, self.grid_dimension - 1))
+        sector_y = max(0, min(sector_y, self.grid_dimension - 1))
+
+        # Convert to 1-based coordinates for logging
+        display_x = sector_x + 1
+        display_y = sector_y + 1
+
+        # If we entered a new sector, mark it as visited
+        if self.current_sector["x"] != sector_x or self.current_sector["y"] != sector_y:
+            if self.visited_grid[sector_y, sector_x] == 0:
+                self.visited_grid[sector_y, sector_x] = 1
+
+                total_visited = np.sum(self.visited_grid)
+                self.get_logger().info(
+                    f"Entered new sector: ({display_x}, {display_y}). "
+                    f"Total visited: {total_visited}/9."
+                )
+
+        # Update current sector
+        self.current_sector["x"] = sector_x
+        self.current_sector["y"] = sector_y
+
+        # Log position periodically (every 5 seconds)
+        self.get_logger().info(
+            f"Position: ({rel_x:.2f}, {rel_y:.2f}) | Sector: ({display_x}, {display_y})",
+            throttle_duration_sec=5
+        )
+    
+    def _navigation_control_loop(self):
+        """Main control loop that manages robot navigation behavior."""
+        # Check if exploration time limit has been reached
+        if not self.exploration_ended:
+            current_time = self.get_clock().now()
+            elapsed_time = (current_time - self.start_time).nanoseconds * 1e-9
+            
+            if elapsed_time >= self.max_exploration_time:
+                self.exploration_ended = True
+                self.get_logger().info("Exploration time limit reached. Finalizing map...")
+                self._finalize_exploration()
                 return
-
-        # Implement the exploration strategy with obstacle avoidance
-        if self.state == "FORWARD":
-            # If path is clear, move forward
-            if self.obstacle_distance_front > self.safe_distance:
-                # Check if we've moved far enough in this direction (Levy flight)
-                if self.distance_traveled_since_turn > self.current_straight_target:
-                    # We've traveled enough in this direction, change to turning state
-                    self.state = "TURNING"
-
-                    # Use intelligent turn direction selection
-                    self.turn_direction = self.select_turn_direction()
-
-                    # Add to turn directions history
-                    if len(self.turn_directions) > self.max_memory:
-                        self.turn_directions.pop(0)
-
-                    # Add turn direction to array
-                    self.turn_directions.append(self.turn_direction)
-
-                    # Generate new distance target
-                    traveled_distance = self.distance_traveled_since_turn  # Store the value before resetting
-                    self.current_straight_target = self.generate_levy_distance()
-                    self.distance_traveled_since_turn = 0.0
-
+        
+        # Skip processing if we're shutting down or haven't received sensor data yet
+        if self.system_shutdown or not self.lidar_initialized:
+            return
+        
+        # Check if we're in a constrained space that needs special handling
+        if self._is_confined_space():
+            if self._handle_confined_space():
+                return
+        
+        # Main navigation state machine
+        if self.robot_state == "EXPLORE_FORWARD":
+            # Check if path is clear ahead
+            if self.sensor_readings["front"] > self.safe_distance:
+                # Check if we've moved far enough in this direction
+                if self.distance_since_last_turn > self.target_segment_length:
+                    # Switch to turning state
+                    self.robot_state = "CHANGE_DIRECTION"
+                    
+                    # Choose turn direction intelligently
+                    self.turn_preference = self._select_optimal_direction()
+                    
+                    # Update turn history
+                    if len(self.turn_history) >= self.memory_length:
+                        self.turn_history.pop(0)
+                    self.turn_history.append(self.turn_preference)
+                    
+                    # Record distance traveled and generate new target
+                    distance_traveled = self.distance_since_last_turn
+                    self.target_segment_length = self._generate_segment_length()
+                    self.distance_since_last_turn = 0.0
+                    
                     self.get_logger().info(
-                        f"Levy flight: Changing direction after traveling {traveled_distance:.2f}m. "
-                        f"New target: {self.current_straight_target:.2f}m"
+                        f"Changing direction after {distance_traveled:.2f}m. "
+                        f"New target distance: {self.target_segment_length:.2f}m"
                     )
                 else:
                     # Continue moving forward
-                    self.vel.linear.x = self.forward_speed
-                    self.vel.angular.z = 0.0
+                    self.robot_command.linear.x = self.linear_velocity
+                    self.robot_command.angular.z = 0.0
             else:
-                # If obstacle detected, change to turning state
-                self.state = "TURNING"
-
-                # Use intelligent turn direction selection
-                self.turn_direction = self.select_turn_direction()
-
-                # Add to turn directions history
-                if len(self.turn_directions) > self.max_memory:
-                    self.turn_directions.pop(0)
-
-                # Add turn direction to array
-                self.turn_directions.append(self.turn_direction)
-
-                # Reset distance tracking
-                self.distance_traveled_since_turn = 0.0
-
+                # Obstacle ahead, need to turn
+                self.robot_state = "CHANGE_DIRECTION"
+                
+                # Choose turn direction intelligently
+                self.turn_preference = self._select_optimal_direction()
+                
+                # Update turn history
+                if len(self.turn_history) >= self.memory_length:
+                    self.turn_history.pop(0)
+                self.turn_history.append(self.turn_preference)
+                
+                # Reset distance counter
+                self.distance_since_last_turn = 0.0
+                
                 self.get_logger().info(
-                    f"Obstacle detected at {self.obstacle_distance_front:.2f}m. "
-                    f"Turning {'left' if self.turn_direction > 0 else 'right'}."
+                    f"Obstacle at {self.sensor_readings['front']:.2f}m. "
+                    f"Turning {self._direction_to_string(self.turn_preference)}."
                 )
-
-        elif self.state == "TURNING":
-            # Execute turn
-            self.vel.linear.x = 0.0  #  forward motion during turn
-            self.vel.angular.z = self.turn_speed * self.turn_direction
-
-            # If front is clear after turning enough, resume forward motion
-            if self.obstacle_distance_front > self.safe_distance * 1.5:
-                self.state = "FORWARD"
-                self.get_logger().info("Path clear. Resuming forward motion.")
-                # Reset distance tracking after completing a turn
-                self.distance_traveled_since_turn = 0.0
-
-        # Publish velocity command
-        if self.has_control:
-            self.vel_pub.publish(self.vel)
+        
+        elif self.robot_state == "CHANGE_DIRECTION":
+            # Execute turn maneuver
+            self.robot_command.linear.x = 0.0
+            self.robot_command.angular.z = self.rotation_velocity * self.turn_preference
+            
+            # Check if we've turned enough to resume forward motion
+            if self.sensor_readings["front"] > self.safe_distance * 1.5:
+                self.robot_state = "EXPLORE_FORWARD"
+                self.get_logger().info("Path now clear. Moving forward.")
+                self.distance_since_last_turn = 0.0
+        
+        # Send movement command to robot
+        self.motion_publisher.publish(self.robot_command)
     
-    def on_shutdown(self):
+    def _is_confined_space(self):
+        """Detect if robot is in a confined space or corner."""
+        # Check if front is obstructed
+        front_blocked = self.sensor_readings["front"] < self.safe_distance
+        
+        # Check if sides are also restricted
+        sides_restricted = (
+            self.sensor_readings["front_left"] < self.safe_distance or
+            self.sensor_readings["front_right"] < self.safe_distance
+        )
+        
+        # Check average space around robot
+        avg_space = (
+            self.sensor_readings["front"] +
+            min(self.sensor_readings["front_left"], self.sensor_readings["front_right"])
+        ) / 2 < self.safe_distance
+        
+        return front_blocked and sides_restricted and avg_space
+    
+    def _handle_confined_space(self):
+        """Execute special maneuver to escape confined spaces."""
+        self.get_logger().info("Confined space detected - executing escape maneuver")
+        
+        # Try to back up if there's space
+        if self.sensor_readings["rear"] > 0.3:
+            self.robot_command.linear.x = -0.05  # Gentle reverse
+        else:
+            self.robot_command.linear.x = 0.0  # Can't back up
+        
+        # Turn toward direction with more space
+        if self.sensor_readings["left"] > self.sensor_readings["right"]:
+            escape_direction = 1  # Turn left
+        else:
+            escape_direction = -1  # Turn right
+        
+        # Apply increased rotation for quicker escape
+        self.robot_command.angular.z = self.rotation_velocity * 1.6 * escape_direction
+        self.motion_publisher.publish(self.robot_command)
+        
+        # Reset distance tracking
+        self.distance_since_last_turn = 0.0
+        self.target_segment_length = self._generate_segment_length()
+        
+        return True
+    
+    def _generate_segment_length(self):
+        """Generate a variable segment length using modified Levy flight pattern."""
+        # Apply Levy-like distribution (more short moves, occasional long ones)
+        if random() < 0.6:  # 60% chance of longer movement
+            return uniform(1.0, 3.0)
+        else:
+            return uniform(0.5, 1.0)
+    
+    def _calculate_exploration_bias(self):
+        """Calculate directional bias based on unexplored sectors."""
+        if self.current_sector["x"] is None or self.current_sector["y"] is None:
+            return 0  # No bias if position unknown
+        
+        # Count unexplored sectors in each direction
+        unexplored = {
+            "left": 0,
+            "right": 0,
+            "front": 0,
+            "back": 0
+        }
+        
+        # Check left direction (-x in grid)
+        for x in range(self.current_sector["x"]):
+            for y in range(self.grid_dimension):
+                if self.visited_grid[y, x] == 0 and not (1 <= x <= 2 and 1 <= y <= 2):
+                    unexplored["left"] += 1
+        
+        # Check right direction (+x in grid)
+        for x in range(self.current_sector["x"] + 1, self.grid_dimension):
+            for y in range(self.grid_dimension):
+                if self.visited_grid[y, x] == 0 and not (1 <= x <= 2 and 1 <= y <= 2):
+                    unexplored["right"] += 1
+        
+        # Check front direction (-y in grid)
+        for y in range(self.current_sector["y"]):
+            for x in range(self.grid_dimension):
+                if self.visited_grid[y, x] == 0 and not (1 <= x <= 2 and 1 <= y <= 2):
+                    unexplored["front"] += 1
+        
+        # Check back direction (+y in grid)
+        for y in range(self.current_sector["y"] + 1, self.grid_dimension):
+            for x in range(self.grid_dimension):
+                if self.visited_grid[y, x] == 0 and not (1 <= x <= 2 and 1 <= y <= 2):
+                    unexplored["back"] += 1
+        
+        # Log unexplored counts periodically
+        self.get_logger().info(
+            f"Unexplored - L: {unexplored['left']}, R: {unexplored['right']}, "
+            f"F: {unexplored['front']}, B: {unexplored['back']}",
+            throttle_duration_sec=5
+        )
+        
+        # Calculate bias (positive for left turn, negative for right turn)
+        if unexplored["left"] > unexplored["right"] + 1:
+            return 0.7  # Left bias
+        elif unexplored["right"] > unexplored["left"] + 1:
+            return -0.7  # Right bias
+        else:
+            return 0  # No strong bias
+    
+    def _select_optimal_direction(self):
+        """Choose optimal turn direction based on multiple factors."""
+        scores = {"left": 0.0, "right": 0.0}
+        
+        # Factor 1: Available space in each direction
+        scores["left"] += self.sensor_readings["left"] * 1.0
+        scores["right"] += self.sensor_readings["right"] * 1.0
+        
+        # Factor 2: Exploration bias from unexplored sectors
+        bias = self._calculate_exploration_bias()
+        if bias > 0:
+            scores["left"] += abs(bias) * 0.5
+        else:
+            scores["right"] += abs(bias) * 0.5
+        
+        # Factor 3: Avoid repetitive turning patterns
+        if len(self.turn_history) >= 3:
+            if self.turn_history[-3:] == [1, 1, 1]:
+                scores["right"] += 1.0  # Avoid turning left again
+            elif self.turn_history[-3:] == [-1, -1, -1]:
+                scores["left"] += 1.0  # Avoid turning right again
+        
+        # Factor 4: Random variation (Levy-inspired)
+        if random() < 0.15:  # 15% chance of surprising choice
+            if random() < 0.5:
+                scores["left"] += 1.0
+            else:
+                scores["right"] += 1.0
+        
+        # Choose direction with highest score
+        direction = 1 if scores["left"] > scores["right"] else -1
+        
+        # Log decision factors
+        self.get_logger().info(
+            f"Turn decision - Left: {scores['left']:.2f}, Right: {scores['right']:.2f}, "
+            f"Selected: {self._direction_to_string(direction)}"
+        )
+        
+        return direction
+    
+    def _direction_to_string(self, direction):
+        """Convert direction value to string representation."""
+        return "LEFT" if direction > 0 else "RIGHT"
+    
+    def _finalize_exploration(self):
+        """Finalize exploration and save the generated map."""
         # Stop the robot
         for _ in range(5):
-            self.vel_pub.publish(Twist())
-
-        # Log final exploration result
-        zones_visited = np.sum(self.visited_zones) 
-        self.get_logger().info(f"Final exploration: {zones_visited}/9 zones visited.")
-
-        #publish done message to save map 
-        self.done_pub.publish(Bool(data=True))
-        self.get_logger().info("Published /exploration_done = True.")
-
-
-        # Unsubscribe from /scan
-        self.destroy_subscription(self.scan_sub)
-        self.get_logger().info("Unsubscribed from /scan to help finalize Cartographer.")
-
-        # 1) Attempt finish_trajectory
-        if self.finish_traj_client.wait_for_service(timeout_sec=5.0):
-            req = FinishTrajectory.Request()
-            req.trajectory_id = 0
-            future = self.finish_traj_client.call_async(req)
-
-            # Give more time (30s) for final optimization
-            self.get_logger().info("Calling finish_trajectory, waiting up to 30s.")
+            self.motion_publisher.publish(Twist())
+        
+        # Log exploration summary
+        total_visited = np.sum(self.visited_grid)
+        self.get_logger().info(f"Exploration complete: {total_visited}/9 sectors visited.")
+        
+        # Notify that exploration is complete (triggers map saving)
+        complete_msg = Bool(data=True)
+        self.exploration_complete_publisher.publish(complete_msg)
+        self.get_logger().info("Published exploration_done message")
+        
+        # Unsubscribe from scan to help Cartographer finalize
+        self.destroy_subscription(self.range_subscriber)
+        self.get_logger().info("Unsubscribed from scan topic to assist map finalization")
+        
+        # Call Cartographer's finish_trajectory service
+        if self.trajectory_service.wait_for_service(timeout_sec=5.0):
+            request = FinishTrajectory.Request()
+            request.trajectory_id = 0
+            future = self.trajectory_service.call_async(request)
+            
+            # Wait for service to complete
+            self.get_logger().info("Calling finish_trajectory service, waiting up to 30s")
             rclpy.spin_until_future_complete(self, future, timeout_sec=30.0)
+            
             if future.result() is not None:
-                self.get_logger().info("FinishTrajectory call succeeded. Cartographer should finalize now.")
+                self.get_logger().info("FinishTrajectory call succeeded. Map should be finalized.")
                 time.sleep(3)
             else:
-                self.get_logger().warn("FinishTrajectory call timed out or failed.")
+                self.get_logger().warn("FinishTrajectory call failed or timed out.")
         else:
-            self.get_logger().warn("'finish_trajectory' service not available.")
+            self.get_logger().warn("finish_trajectory service not available")
+        
+        self.system_shutdown = True
 
-        self.shutdown = True
 
 def main(args=None):
+    """Main function to initialize and run the explorer node."""
     rclpy.init(
         args=args,
         signal_handler_options=SignalHandlerOptions.NO
     )
-    node = Exploration()
+    
+    explorer = MapExplorerRobot()
+    
     try:
-        rclpy.spin(node)
+        rclpy.spin(explorer)
     except KeyboardInterrupt:
-        node.on_shutdown()
+        explorer._finalize_exploration()
     finally:
-        while not node.shutdown:
+        # Wait for shutdown to complete
+        while not explorer.system_shutdown:
             continue
-        node.destroy_node()
+        explorer.destroy_node()
         rclpy.shutdown()
 
 
