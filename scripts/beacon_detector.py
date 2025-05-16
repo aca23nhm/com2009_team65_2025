@@ -62,7 +62,7 @@ class BeaconDetector(Node):
         self.m00_MINIMUM = 0
         self.FAST_TURN_RATE = -0.5 # Values from tuos_simulations/colour_search
         self.SLOW_TURN_RATE = -0.1
-        self.CENTRE_OFFSET = 100 # pixels from the centre that we can stop in center_callback
+        self.CENTRE_OFFSET = 25 # pixels from the centre that we can stop in center_callback
 
         self.package_dir = get_package_share_directory('com2009_team65_2025')
         self.waiting_for_image = True
@@ -122,7 +122,7 @@ class BeaconDetector(Node):
         
             height, width, _ = cv_img.shape
             #self.get_logger().info(f"Height: {height}, Width: {width} of original image")
-            crop_width = int(width * 0.8)     # roughly equal to the absolute values from Ass1 Part6
+            crop_width = int(width * 1)     # roughly equal to the absolute values from Ass1 Part6
             crop_height = int(height * 0.375)
             crop_y0 = int((width / 2) - (crop_width / 2))
             crop_z0 = 0
@@ -195,7 +195,7 @@ class BeaconDetector(Node):
         vel_cmd = Twist()
 
         height, width, _ = self.full_image.shape
-        centre = int(height / 2)
+        centre = int(width / 2)
 
         # I think the m00 minima need to be much higher - see the funny picture
         if m00 > 400000: # TODO determine some good moo minima
@@ -203,7 +203,7 @@ class BeaconDetector(Node):
             if centre - self.CENTRE_OFFSET <= cy <= centre + self.CENTRE_OFFSET:
                 if self.move_rate == 'slow':
                     self.move_rate = 'stop'
-                    self.stop_counter = 30
+                    self.stop_counter = 15
             else:
                 self.move_rate = 'slow'
         else:
@@ -243,7 +243,7 @@ class BeaconDetector(Node):
         self.vel_pub.publish(vel_cmd)
 
     def save_image(self, img, filename='target_beacon.jpg', debug=False):
-        save_path = "/home/student/ros2_ws/src/com2009_team65_2025/snaps" + '/debug' if debug else ''
+        save_path = "/home/student/ros2_ws/src/com2009_team65_2025/snaps" + ('/debug' if debug else '')
         
         os.makedirs(save_path, exist_ok=True)
         filename = os.path.join(save_path, filename)
@@ -254,7 +254,7 @@ class BeaconDetector(Node):
             self.waiting_for_image = False
             cv2.destroyAllWindows()    
 
-
+# we need to adapt the cy to the full FOV coordinate system? to get it to line up properly????
 def get_cy(moments, epsilon=1e-4):
     return int(moments['m10'] / (moments['m00'] + epsilon))
 
