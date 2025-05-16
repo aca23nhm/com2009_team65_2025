@@ -37,24 +37,24 @@ In exploration_controller.py, the robot uses a navigation strategy inspired by L
 
 The movement system operates as follows:
 
-- The robot drives forward a random distance within a bounded range (e.g., 0.3 m to 1.0 m).
+The robot drives forward a random distance within a bounded range (e.g., 0.3 m to 1.0 m).
 
-- After each segment, the robot rotates a random angle (e.g., between 45° and 180°).
+After each segment, the robot rotates a random angle (e.g., between 45° and 180°).
 
-- If the robot detects an obstacle within a safety threshold (e.g., < 0.25 m), it immediately reverses slightly and rotates until a clear path is identified.
+If the robot detects an obstacle within a safety threshold (e.g., < 0.25 m), it immediately reverses slightly and rotates until a clear path is identified.
 
-- Turning directions are chosen based on the least obstructed heading using LiDAR scan data.
+Turning directions are chosen based on the least obstructed heading using LiDAR scan data.
 
 This method is not only simple and reactive, but also effective for covering space in time-limited scenarios.
 
 ## Obstacle Avoidance
 Obstacle detection is handled using data from the robot’s LiDAR sensor. The 360° scan provides distance measurements to nearby objects. The robot continuously monitors the minimum distance in its forward-facing sector. If a potential collision is detected:
 
-- The robot halts immediately.
+The robot halts immediately.
 
-- It reverses slightly (e.g., 10 cm).
+It reverses slightly (e.g., 5 cm).
 
-- It scans the environment and chooses a new heading that avoids the obstacle, using basic trigonometric evaluation of scan data to select the direction with the greatest clearance.
+It scans the environment and chooses a new heading that avoids the obstacle, using basic trigonometric evaluation of scan data to select the direction with the greatest clearance.
 
 This process is repeated throughout the exploration, allowing the robot to safely maneuver around walls, boxes, and other structures.
 
@@ -62,33 +62,33 @@ This process is repeated throughout the exploration, allowing the robot to safel
 The arena is abstracted as a 3×3 grid. The robot updates a zone-tracking dictionary with its estimated (x, y) coordinates, transformed from odometry data. When a new zone is entered, it's marked as visited to avoid redundant navigation. This zone-awareness is used to guide turning decisions.
 
 ## Beacon Detection and Photo Capture
-In parallel with navigation, a dedicated ROS2 node named BeaconDetector runs continuously. This node subscribes to the /camera/image_raw topic and uses OpenCV to process incoming frames.
+In parallel with navigation, a dedicated ROS2 node named BeaconDetector runs continuously. This is being done in beacon_detector.py. This node subscribes to the /camera/image_raw topic and uses OpenCV to process incoming frames.
 
 The detection pipeline includes:
 
-- Converting the RGB image to HSV colour space.
+Converting the RGB image to HSV colour space.
 
-- Applying colour masking based on the user-defined target (e.g., red, blue, green, yellow).
+Applying colour masking based on the user-defined target (e.g., red, blue, green, yellow).
 
-- Identifying contours and bounding boxes.
+Identifying contours and bounding boxes.
 
-- Locating the largest blob matching the target colour.
+Locating the largest blob matching the target colour.
 
-- Calculating the centroid to verify beacon size and position.
+Calculating the centroid to verify beacon size and position.
 
-- Once a valid beacon is detected and centered in view, the node saves the image locally as snaps/target_beacon.jpg. The detection loop halts once the image is captured successfully.
+Once a valid beacon is detected and centered in view, the node saves the image locally as snaps/target_beacon.jpg. The detection loop halts once the image is captured successfully.
 
 ## SLAM and Map Saving
-Simultaneously, the application runs Cartographer SLAM, a 2D mapping solution that combines LiDAR and odometry data to incrementally build a representation of the environment. The map is published to the /map topic and can be viewed in real time using rviz2.
+Simultaneously, the application runs Cartographer SLAM, a 2D mapping solution that combines LiDAR and odometry data through slam_mapper.py to incrementally build a representation of the environment. The map is published to the /map topic and can be viewed in real time using rviz2.
 
-At the end of the 3-minute run (or upon a shutdown signal), the current map is saved as a PGM/PNG image with a YAML metadata file using the map_saver node. This map is stored under the /maps/ directory and named arena_map.png.
+At the end of the 3-minute run (or upon a shutdown signal), the current map is saved as a PNG image with a YAML metadata file using the map_saver node. This map is stored under the /maps/ directory and named arena_map.png.
 
 This functionality ensures that the robot not only explores the environment but also leaves behind a usable record of the space it covered.
 
-TODO Functional Block Diagram
+Functional Block Diagram
 
 # Contributor (team members and link to github profile)
-- [Lottie McGhee](https://github.com/drearyplane8)
-- [Tommy Sargaison](https://github.com/tommmicron)
-- [Nurul Husna Mohmad Hakim](https://github.com/aca23nhm)
-- [Nik Farhanah Nik Zawawi](https://github.com/anahnick)
+[Lottie McGhee](https://github.com/drearyplane8)
+[Tommy Sargaison](https://github.com/tommmicron)
+[Nurul Husna Mohmad Hakim](https://github.com/aca23nhm)
+[Nik Farhanah Nik Zawawi](https://github.com/anahnick)

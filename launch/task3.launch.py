@@ -13,6 +13,12 @@ def generate_launch_description():
         description='The colour of the beacon to search for (yellow|red|green|blue).'
     )
 
+    in_simulator_arg = DeclareLaunchArgument(
+        'in_simulator',
+        default_value='False',
+        description='Boolean value - are we running in the simulator or not?'
+    )
+
     # Start Cartographer SLAM
     cartographer_launch = ExecuteProcess(
         cmd=[
@@ -50,7 +56,7 @@ def generate_launch_description():
         executable='beacon_detector.py',
         name='beacon_detector',
         output='screen',
-        parameters=[{'target_colour': LaunchConfiguration('target_colour')}]
+        parameters=[{'target_colour': LaunchConfiguration('target_colour'), 'in_simulator': LaunchConfiguration('in_simulator')}] # TODO: add as actual param
     )
 
     slam_mapper_node = Node(
@@ -67,6 +73,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         target_colour_arg,
+        in_simulator_arg,
         cartographer_launch,
         map_saver_node,
         lifecycle_manager,
