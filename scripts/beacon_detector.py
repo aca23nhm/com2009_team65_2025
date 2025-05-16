@@ -47,7 +47,7 @@ class BeaconDetector(Node):
         )        
 
         self.control_requester = self.create_client(
-            ControlSharingReq, 'beacon_detector'
+            ControlSharingReq, 'exploration_controller_control_controller'
         )
 
         # timer callback uses this
@@ -59,7 +59,7 @@ class BeaconDetector(Node):
         self.move_rate = ''
 
         # constants
-        self.m00_MINIMUM = 0
+        self.m00_MINIMUM = 1_500_000
         self.FAST_TURN_RATE = -0.5 # Values from tuos_simulations/colour_search
         self.SLOW_TURN_RATE = -0.1
         self.CENTRE_OFFSET = 25 # pixels from the centre that we can stop in center_callback
@@ -154,9 +154,7 @@ class BeaconDetector(Node):
                 self.pass_data_to_centrer(moments, cv_img)
 
                 # Send a request ot the main ExplorationController for control of the robot's movement
-                control_request = ControlSharingReq.Request()
-                control_request.giving_back = False
-                self.control_requester.call_async(control_request)
+                self.send_control_req(False) # I would like control
 
                 # Set the centerer off to the races
                 self.centering = True
@@ -198,7 +196,7 @@ class BeaconDetector(Node):
         centre = int(width / 2)
 
         # I think the m00 minima need to be much higher - see the funny picture
-        if m00 > 400000: # TODO determine some good moo minima
+        if m00 > self.m00_MINIMUM: # TODO determine some good moo minima
             # blob detected
             if centre - self.CENTRE_OFFSET <= cy <= centre + self.CENTRE_OFFSET:
                 if self.move_rate == 'slow':
@@ -232,6 +230,7 @@ class BeaconDetector(Node):
             self.centering = False
             cv2.line(self.full_image, (cy, 0), (cy, height), (255, 0, 255), 1 ) # draw a line through the centroid
             self.save_image(self.full_image)
+            self.send_control_req(True) # you can have control back
         
         else:
             self.get_logger().info(
@@ -253,6 +252,11 @@ class BeaconDetector(Node):
         if not debug:
             self.waiting_for_image = False
             cv2.destroyAllWindows()    
+
+    def send_control_req(self, giving_back : bool):
+        control_request = ControlSharingReq.Request()
+        control_request.giving_back = giving_back
+        self.control_requester.call_async(control_request)
 
 # we need to adapt the cy to the full FOV coordinate system? to get it to line up properly????
 def get_cy(moments, epsilon=1e-4):

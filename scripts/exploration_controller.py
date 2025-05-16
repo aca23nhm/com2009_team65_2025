@@ -100,7 +100,7 @@ class MapExplorerRobot(Node):
         self.has_control = True
         self.control_relinquisher = self.create_service(
             srv_type=ControlSharingReq,
-            srv_name='exploration_controller_control_server',
+            srv_name='exploration_controller_control_controller',
             callback = self.control_relinquisher_callback
         )
         
@@ -503,9 +503,11 @@ class MapExplorerRobot(Node):
 
     def control_relinquisher_callback(self, request, response):
         if request.giving_back:
+            self.get_logger().info("The BeaconDetector has given us control back.")
             self.has_control = True
             response.do_you_have_control = False
         else:
+            self.get_logger().info("The BeaconDetector has requested control.")
             self.has_control = False
             response.do_you_have_control = True 
             self.motion_publisher.publish(Twist())   
