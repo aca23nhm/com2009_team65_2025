@@ -17,6 +17,7 @@ from nav_msgs.msg import Odometry
 from std_msgs.msg import Bool
 from cartographer_ros_msgs.srv import FinishTrajectory
 from rclpy.duration import Duration
+from com2009_team65_2025.srv import ControlSharingReq
 
 
 class MapExplorerRobot(Node):
@@ -94,6 +95,14 @@ class MapExplorerRobot(Node):
         
         # Start control loop at 10Hz
         self.control_loop = self.create_timer(0.1, self._navigation_control_loop)
+
+        # Create a server for the control taker overer
+        self.has_control = True
+        self.control_relinquisher = self.create_service(
+            srv_type=ControlSharingReq,
+            srv_name='exploration_controller_control_server',
+            callback = self.control_relinquisher_callback
+        )
         
         self.get_logger().info("Map Explorer initialized - beginning autonomous navigation")
     
@@ -230,8 +239,8 @@ class MapExplorerRobot(Node):
                 self._finalize_exploration()
                 return
         
-        # Skip processing if we're shutting down or haven't received sensor data yet
-        if self.system_shutdown or not self.lidar_initialized:
+        # Skip processing if we're shutting down, haven't received sensor data yet, or if we don't have control
+        if self.system_shutdown or not self.lidar_initialized or not self.has_control:
             return
         
         # Check if we're in a constrained space that needs special handling
@@ -490,6 +499,17 @@ class MapExplorerRobot(Node):
             self.get_logger().warn("finish_trajectory service not available")
         
         self.system_shutdown = True
+
+
+    def control_relinquisher_callback(self, request, response):
+        if request.giving_back:
+            self.has_control = True
+            response.do_you_have_control = False
+        else:
+            self.has_control = False
+            response.do_you_have_control = True 
+            self.motion_publisher.publish(Twist())   
+        return response        
 
 
 def main(args=None):
