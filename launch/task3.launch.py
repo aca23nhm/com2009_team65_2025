@@ -22,7 +22,7 @@ def generate_launch_description():
     # Start Cartographer SLAM
     cartographer_launch = ExecuteProcess(
         cmd=[
-            'ros2', 'launch', 'tuos_simulations', 'cartographer.launch.py', 'use_sim_time:=false'
+            'ros2', 'launch', 'turtlebot3_cartographer', 'cartographer.launch.py', 'use_sim_time:=false'
         ],
         output='log' 
     )
