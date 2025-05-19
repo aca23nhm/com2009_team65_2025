@@ -97,17 +97,17 @@ class BeaconDetector(Node):
 
     def get_colour_thresholds(self):
         if self.target_colour == "blue":
-            return (80, 100, 50), (125, 255, 255)
+            return (100, 100, 100), (130, 255, 255)
         elif self.target_colour == "red":
-            return (0, 100, 50), (15, 255, 255)
+            return (0, 100, 100), (10, 255, 255)
         elif self.target_colour == "green":
-            return (74, 150, 50), (90, 255, 255)
+            return (40, 100, 100), (80, 255, 255)
         elif self.target_colour == "yellow":
             return (20, 100, 100), (30, 255, 255)
         else:
             self.get_logger().warn(f"Unknown target colour: {self.target_colour}, defaulting to yellow.")
-            return (20, 120, 50), (30, 255, 255)
-
+            return (20, 100, 100), (30, 255, 255)
+        
     def camera_callback(self, img_data):
 
         try:

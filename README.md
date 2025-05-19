@@ -83,7 +83,7 @@ The detection pipeline consists of:
 - Once we're at the centre, taking a picture, handing control back to the ExplorationController, and shutting down the node.
 
 ### Control Sharing
-The ExplorationController and BeaconDetector nodes both wish to move the robot around. We make use of a Service called ControlSharingReq to achieve this. The ExplorationController, which controls the robot the majority of the time runs a control-sharing server. It also has a flag which prevents it from moving if set. When the BeaconDetector wants control of the robot, it sends a message to the ExplorationController. On receipt, a callback in the ExplorationController sets this flag, which suspends exploration until the BeaconDetector finishes its business, when it sends another message handing back control to the ExplorationController, which resets its flag and goes on with its business.
+The ExplorationController and BeaconDetector nodes both wish to move the robot around. We make use of a Service called ControlSharingReq to achieve this. The ExplorationController, which controls the robot the majority of the time, runs a control-sharing server. It also has a flag which prevents it from moving if set. When the BeaconDetector wants control of the robot, it sends a message to the ExplorationController. On receipt, a callback in the ExplorationController sets this flag, which suspends exploration until the BeaconDetector finishes its business, when it sends another message handing back control to the ExplorationController, which resets its flag and goes on with its business.
 
 
 ## SLAM and Map Saving
