@@ -161,7 +161,7 @@ class MapExplorerRobot(Node):
             self.current_position["x"] = pos_x
             self.current_position["y"] = pos_y
 
-            # ✅ Use actual position, not relative to origin
+            # Use actual position, not relative to origin
             sector_x = int((pos_x + self.environment_width / 2) / self.sector_width)
             sector_y = int((pos_y + self.environment_width / 2) / self.sector_width)
             sector_x = max(0, min(sector_x, self.grid_dimension - 1))

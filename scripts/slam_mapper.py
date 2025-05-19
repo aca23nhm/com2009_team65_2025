@@ -28,7 +28,7 @@ class SLAMMapper(Node):
             self.get_logger().info("Exploration complete. Attempting to save map...")
 
             if not self.save_map_client.wait_for_service(timeout_sec=60.0):
-                self.get_logger().warn("❌ /map_saver/save_map service is not available.")
+                self.get_logger().warn(" /map_saver/save_map service is not available.")
                 return
 
             map_base_path = os.path.join(self.maps_dir, 'arena_map')
@@ -47,11 +47,11 @@ class SLAMMapper(Node):
             png_file = f"{map_base_path}.png"
             
             if os.path.exists(yaml_file) and os.path.exists(png_file):
-                self.get_logger().info(f"✅ Map saved successfully (verified files exist)")
+                self.get_logger().info(f" Map saved successfully (verified files exist)")
                 self.get_logger().info(f"  - {yaml_file}")
                 self.get_logger().info(f"  - {png_file}")
             else:
-                self.get_logger().warn("❌ Map files not found after save attempt")
+                self.get_logger().warn(" Map files not found after save attempt")
                 if not os.path.exists(yaml_file):
                     self.get_logger().warn(f"  - Missing: {yaml_file}")
                 if not os.path.exists(png_file):
