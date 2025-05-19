@@ -6,6 +6,7 @@ from rclpy.signals import SignalHandlerOptions
 import numpy as np
 import time
 import os
+import cv2
 from math import sqrt, atan2, cos, sin, pi
 from random import random, uniform
 from functools import partial
@@ -100,7 +101,7 @@ class MapExplorerRobot(Node):
         self.has_control = True
         self.control_relinquisher = self.create_service(
             srv_type=ControlSharingReq,
-            srv_name='exploration_controller_control_server',
+            srv_name='exploration_controller_control_controller',
             callback = self.control_relinquisher_callback
         )
         
@@ -161,7 +162,7 @@ class MapExplorerRobot(Node):
             self.current_position["x"] = pos_x
             self.current_position["y"] = pos_y
 
-            # ✅ Use actual position, not relative to origin
+            # Use actual position, not relative to origin
             sector_x = int((pos_x + self.environment_width / 2) / self.sector_width)
             sector_y = int((pos_y + self.environment_width / 2) / self.sector_width)
             sector_x = max(0, min(sector_x, self.grid_dimension - 1))
@@ -503,14 +504,24 @@ class MapExplorerRobot(Node):
 
     def control_relinquisher_callback(self, request, response):
         if request.giving_back:
+            self.get_logger().info("The BeaconDetector has given us control back.")
             self.has_control = True
             response.do_you_have_control = False
         else:
+            self.get_logger().info("The BeaconDetector has requested control.")
             self.has_control = False
             response.do_you_have_control = True 
             self.motion_publisher.publish(Twist())   
         return response        
 
+    def shutdown_ops(self):
+            self.get_logger().info(
+                "Shutting down..."
+            )
+            cv2.destroyAllWindows()
+            for i in range(5):
+                self.vel_pub.publish(Twist())
+            self.shutdown = True
 
 def main(args=None):
     """Main function to initialize and run the explorer node."""
@@ -529,6 +540,7 @@ def main(args=None):
         # Wait for shutdown to complete
         while not explorer.system_shutdown:
             continue
+        explorer.shutdown_ops()
         explorer.destroy_node()
         rclpy.shutdown()
 
