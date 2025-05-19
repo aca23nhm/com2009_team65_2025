@@ -6,6 +6,7 @@ from rclpy.signals import SignalHandlerOptions
 import numpy as np
 import time
 import os
+import cv2
 from math import sqrt, atan2, cos, sin, pi
 from random import random, uniform
 from functools import partial
@@ -161,7 +162,7 @@ class MapExplorerRobot(Node):
             self.current_position["x"] = pos_x
             self.current_position["y"] = pos_y
 
-            # ✅ Use actual position, not relative to origin
+            # Use actual position, not relative to origin
             sector_x = int((pos_x + self.environment_width / 2) / self.sector_width)
             sector_y = int((pos_y + self.environment_width / 2) / self.sector_width)
             sector_x = max(0, min(sector_x, self.grid_dimension - 1))
@@ -513,6 +514,14 @@ class MapExplorerRobot(Node):
             self.motion_publisher.publish(Twist())   
         return response        
 
+    def shutdown_ops(self):
+            self.get_logger().info(
+                "Shutting down..."
+            )
+            cv2.destroyAllWindows()
+            for i in range(5):
+                self.vel_pub.publish(Twist())
+            self.shutdown = True
 
 def main(args=None):
     """Main function to initialize and run the explorer node."""
@@ -531,6 +540,7 @@ def main(args=None):
         # Wait for shutdown to complete
         while not explorer.system_shutdown:
             continue
+        explorer.shutdown_ops()
         explorer.destroy_node()
         rclpy.shutdown()
 
