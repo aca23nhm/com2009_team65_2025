@@ -314,6 +314,10 @@ class MapExplorerRobot(Node):
         self.motion_publisher.publish(self.robot_command)
     
     def _is_confined_space(self):
+
+        if not self.has_control:
+            return
+
         """Detect if robot is in a confined space or corner."""
         # Check if front is obstructed
         front_blocked = self.sensor_readings["front"] < self.safe_distance
