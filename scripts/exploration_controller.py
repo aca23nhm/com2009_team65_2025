@@ -48,7 +48,7 @@ class MapExplorerRobot(Node):
         # Setup robot motion parameters
         self.linear_velocity = 0.20  # Forward speed in m/s
         self.rotation_velocity = 0.6  # Rotation speed in rad/s
-        self.safe_distance = 0.40  # Minimum safe distance to obstacles
+        self.safe_distance = 0.42  # Minimum safe distance to obstacles
         
         # Initialize state variables
         self.robot_state = "EXPLORE_FORWARD"

@@ -226,11 +226,12 @@ class BeaconDetector(Node):
                 f"\nSTOPPED:\n"
                 f"The blob of colour is now dead-ahead at y-position {cy:.0f} pixels... Counting down: {self.stop_counter}"
             )
+            vel_cmd.linear.x = 0.0
             vel_cmd.angular.z = 0.0
             self.centering = False
             self.save_image(self.full_image)
             self.send_control_req(True) # you can have control back
-        
+        # todo only allow robot to spin once, maybe look somewhere else for blue?
         else:
             self.get_logger().info(
                 f"\nMOVING SLOW:\n"
