@@ -192,7 +192,7 @@ class BeaconDetector(Node):
         m00 = self.moments_for_turning['m00']
         vel_cmd = Twist()
 
-        height, width, _ = self.full_image.shape
+        _, width, _ = self.full_image.shape
         centre = int(width / 2)
 
         # I think the m00 minima need to be much higher - see the funny picture
@@ -228,7 +228,6 @@ class BeaconDetector(Node):
             )
             vel_cmd.angular.z = 0.0
             self.centering = False
-            cv2.line(self.full_image, (cy, 0), (cy, height), (255, 0, 255), 1 ) # draw a line through the centroid
             self.save_image(self.full_image)
             self.send_control_req(True) # you can have control back
         
