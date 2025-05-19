@@ -1,8 +1,10 @@
 # TurtleBot Autonomous Explorer
 
-## Overview
+## Summary
 
-This ROS2 Python application enables a TurtleBot to autonomously explore an arena within 3 minutes, avoiding obstacles and building a coverage map via SLAM. It uses LiDAR and odometry data to detect and navigate around obstacles while marking visited areas on a 3×3 grid. The robot moves in randomized segments with adaptive turning. Using the ROS2 node `BeaconDetector`, it identifies coloured beacons using the robot's built-in camera. A photo is captured and saved locally when the target colour is detected. The system combines autonomous navigation, visual detection, and map generation for efficient environment exploration and documentation.
+This ROS2 Python application enables a TurtleBot3 Waffle to autonomously explore an arena within 3 minutes, avoiding obstacles and building an occupancy grid via SLAM. It uses LiDAR and odometry data to detect and navigate around obstacles while marking visited areas on a 3×3 grid. The robot moves in randomized segments with adaptive turning. Using the ROS2 node `BeaconDetector`, it identifies coloured beacons using the robot's built-in camera. A photo is captured and saved locally when the target colour is detected. 
+
+The system combines autonomous navigation, visual detection, and map generation for efficient environment exploration and documentation.
 
 ## Installation and Execution
 
@@ -31,8 +33,10 @@ colcon build --packages-select com2009_team65_2025 --symlink-install
 source ~/.bashrc
 ros2 launch com2009_team65_2025 task3.launch.py target_colour:=COLOUR
 ```
+where `COLOUR` is one of {red, green, blue, yellow}.
 
 Make sure the robot is placed in the arena before running the last command.
+
 
 ## Functional Description
 
@@ -78,8 +82,9 @@ The detection pipeline consists of:
 - Once we think we have a real pillar, requesting control from the ExplorationController, and turning towards the centre of the block of colour.
 - Once we're at the centre, taking a picture, handing control back to the ExplorationController, and shutting down the node.
 
-## Control Sharing
+### Control Sharing
 The ExplorationController and BeaconDetector nodes both wish to move the robot around. We make use of a Service called ControlSharingReq to achieve this. The ExplorationController, which controls the robot the majority of the time runs a control-sharing server. It also has a flag which prevents it from moving if set. When the BeaconDetector wants control of the robot, it sends a message to the ExplorationController. On receipt, a callback in the ExplorationController sets this flag, which suspends exploration until the BeaconDetector finishes its business, when it sends another message handing back control to the ExplorationController, which resets its flag and goes on with its business.
+
 
 ## SLAM and Map Saving
 Simultaneously, the application runs Cartographer SLAM, a 2D mapping solution that combines LiDAR and odometry data through slam_mapper.py to incrementally build a representation of the environment. The map is published to the /map topic and can be viewed in real time using rviz2.
