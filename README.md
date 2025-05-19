@@ -93,9 +93,7 @@ At the end of the 3-minute run (or upon a shutdown signal), the current map is s
 
 This functionality ensures that the robot not only explores the environment but also leaves behind a usable record of the space it covered.
 
-Functional Block Diagram
-
-(*Insert image or diagram here if applicable*)
+![Functional Block Diagram](./functional_block_diagram.png)
 
 ## Contributors
 

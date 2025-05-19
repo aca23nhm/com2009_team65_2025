@@ -1,1 +1,0 @@
-/home/student/ros2_ws/src/com2009_team65_2025/build/com2009_team65_2025/rosidl_generator_c/com2009_team65_2025/action/detail/explore_forward__struct.h

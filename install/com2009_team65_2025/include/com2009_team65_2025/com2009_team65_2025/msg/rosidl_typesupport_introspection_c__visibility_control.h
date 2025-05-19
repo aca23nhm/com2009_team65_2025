@@ -1,1 +1,0 @@
-/home/student/ros2_ws/src/com2009_team65_2025/build/com2009_team65_2025/rosidl_typesupport_introspection_c/com2009_team65_2025/msg/rosidl_typesupport_introspection_c__visibility_control.h

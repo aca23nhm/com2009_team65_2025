@@ -1,1 +1,0 @@
-/home/student/ros2_ws/src/com2009_team65_2025/build/com2009_team65_2025/ament_cmake_core/com2009_team65_2025Config-version.cmake

@@ -1,1 +1,0 @@
-/home/student/ros2_ws/src/com2009_team65_2025/scripts/avoiding_obstacles_server.py
