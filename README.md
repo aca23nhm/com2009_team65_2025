@@ -60,21 +60,19 @@ This process is repeated throughout the exploration, allowing the robot to safel
 The arena is abstracted as a 3×3 grid. The robot updates a zone-tracking dictionary with its estimated (x, y) coordinates, transformed from odometry data. When a new zone is entered, it's marked as visited to avoid redundant navigation. This zone-awareness is used to guide turning decisions.
 
 ## Beacon Detection and Photo Capture
-In parallel with navigation, a dedicated ROS2 node named BeaconDetector runs continuously. This is being done in beacon_detector.py. This node subscribes to the /camera/image_raw topic and uses OpenCV to process incoming frames.
+In parallel with navigation, a dedicated ROS2 node named BeaconDetector runs continuously. This is defined in beacon_detector.py. This node subscribes to the /camera/image_raw topic and uses OpenCV to process incoming frames.
 
-The detection pipeline includes:
+The detection pipeline consists of:
 
-Converting the RGB image to HSV colour space.
+- Converting the RGB image to HSV colour space.
+- Applying colour masking based on the user-defined target (i.e., red, blue, green, or yellow).
+- Using the m00 image moment to detect if there is a minimum area of our target colour.
+- Checking horizontal lines across the image, to ensure we haven't captured one solid block of colour (like a wall).
+- Once we think we have a real pillar, requesting control from the ExplorationController, and turning towards the centre of the block of colour.
+- Once we're at the centre, taking a picture, handing control back to the ExplorationController, and shutting down the node.
 
-Applying colour masking based on the user-defined target (e.g., red, blue, green, yellow).
-
-Identifying contours and bounding boxes.
-
-Locating the largest blob matching the target colour.
-
-Calculating the centroid to verify beacon size and position.
-
-Once a valid beacon is detected and centered in view, the node saves the image locally as snaps/target_beacon.jpg. The detection loop halts once the image is captured successfully.
+## Control Sharing
+The ExplorationController and BeaconDetector nodes both wish to move the robot around. We make use of a Service called ControlSharingReq to achieve this. The ExplorationController, which controls the robot the majority of the time runs a control-sharing server. It also has a flag which prevents it from moving if set. When the BeaconDetector wants control of the robot, it sends a message to the ExplorationController. On receipt, a callback in the ExplorationController sets this flag, which suspends exploration until the BeaconDetector finishes its business, when it sends another message handing back control to the ExplorationController, which resets its flag and goes on with its business.
 
 ## SLAM and Map Saving
 Simultaneously, the application runs Cartographer SLAM, a 2D mapping solution that combines LiDAR and odometry data through slam_mapper.py to incrementally build a representation of the environment. The map is published to the /map topic and can be viewed in real time using rviz2.
