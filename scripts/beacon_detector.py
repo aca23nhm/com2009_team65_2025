@@ -50,18 +50,14 @@ class BeaconDetector(Node):
             ControlSharingReq, 'exploration_controller_control_controller'
         )
 
-        # timer callback uses this
-        self.stop_counter = 0
-
         # Stop the camera callback from being annoying if the centrer callback is running
         self.centering = False
         self.moments_for_turning = 0
-        self.move_rate = ''
+        self.stop = False
 
         # constants
         self.m00_MINIMUM = 1_500_000
-        self.FAST_TURN_RATE = -0.5 # Values from tuos_simulations/colour_search
-        self.SLOW_TURN_RATE = -0.1
+        self.TURN_RATE = -0.1
         self.CENTRE_OFFSET = 25 # pixels from the centre that we can stop in center_callback
 
         self.package_dir = get_package_share_directory('com2009_team65_2025')
@@ -184,61 +180,43 @@ class BeaconDetector(Node):
     def centre_pillar_callback(self):
         if not self.centering:
             return
-        
-        if self.stop_counter > 0:
-            self.stop_counter -= 1
 
         cy = get_cy(self.moments_for_turning)
         m00 = self.moments_for_turning['m00']
-        vel_cmd = Twist()
 
         _, width, _ = self.full_image.shape
         centre = int(width / 2)
 
-        # I think the m00 minima need to be much higher - see the funny picture
+
+        # Check whether there is a blob worth stopping for
         if m00 > self.m00_MINIMUM: # TODO determine some good moo minima
-            # blob detected
-            if centre - self.CENTRE_OFFSET <= cy <= centre + self.CENTRE_OFFSET:
-                if self.move_rate == 'slow':
-                    self.move_rate = 'stop'
-                    self.stop_counter = 15
-            else:
-                self.move_rate = 'slow'
+            # blob detected - determine whether we are looking at it or not
+            self.stop = centre - self.CENTRE_OFFSET <= cy <= centre + self.CENTRE_OFFSET
         else:
-            self.move_rate = 'fast'
-            
-        if self.move_rate == 'fast':
-            self.get_logger().info(
-                "\nMOVING FAST:\n"
-                "I can't see anything at the moment, scanning the area..."
-            )
-            vel_cmd.angular.z = self.FAST_TURN_RATE * (-1 if cy < centre else 1)
-            
-        elif self.move_rate == 'slow':
-            self.get_logger().info(
-                f"\nMOVING SLOW:\n"
-                f"A blob of colour of size {m00:.0f} pixels is in view at y-position: {cy:.0f} pixels."
-            )
-            vel_cmd.angular.z = self.SLOW_TURN_RATE * (-1 if cy < centre else 1)
+            # We have lost sight of the blob, give up and try again
+            self.get_logger().info("Lost sight of blob, giving up. ")
+            self.stop_beacon_detecting()
+            return
         
-        elif self.move_rate == 'stop' and self.stop_counter > 0:
+        if self.stop:
             self.get_logger().info(
                 f"\nSTOPPED:\n"
-                f"The blob of colour is now dead-ahead at y-position {cy:.0f} pixels... Counting down: {self.stop_counter}"
+                f"The blob of colour is now dead-ahead at y-position {cy:.0f} pixels. Snapping picture."
             )
-            vel_cmd.angular.z = 0.0
-            self.centering = False
             self.save_image(self.full_image)
-            self.send_control_req(True) # you can have control back
-        
+            self.stop_beacon_detecting()
         else:
             self.get_logger().info(
-                f"\nMOVING SLOW:\n"
-                f"A blob of colour of size {m00:.0f} pixels is in view at y-position: {cy:.0f} pixels."
+                f"A blob of colour of size {m00:.0f} pixels is in view at y-position: {cy:.0f} pixels. Turning towards it."
             )
-            vel_cmd.angular.z = self.SLOW_TURN_RATE
-        
-        self.vel_pub.publish(vel_cmd)
+            vel_cmd = Twist()
+            vel_cmd.angular.z = self.TURN_RATE * (-1 if cy < centre else 1)
+            self.vel_pub.publish(vel_cmd)
+
+    def stop_beacon_detecting(self):
+        self.vel_pub.publish(Twist())
+        self.centering = False
+        self.send_control_req(True)
 
     def save_image(self, img, filename='target_beacon.jpg', debug=False):
         save_path = "/home/student/ros2_ws/src/com2009_team65_2025/snaps" + ('/debug' if debug else '')
