@@ -48,7 +48,7 @@ class MapExplorerRobot(Node):
         # Setup robot motion parameters
         self.linear_velocity = 0.20  # Forward speed in m/s
         self.rotation_velocity = 0.6  # Rotation speed in rad/s
-        self.safe_distance = 0.40  # Minimum safe distance to obstacles
+        self.safe_distance = 0.42  # Minimum safe distance to obstacles
         
         # Initialize state variables
         self.robot_state = "EXPLORE_FORWARD"
@@ -314,6 +314,10 @@ class MapExplorerRobot(Node):
         self.motion_publisher.publish(self.robot_command)
     
     def _is_confined_space(self):
+
+        if not self.has_control:
+            return
+
         """Detect if robot is in a confined space or corner."""
         # Check if front is obstructed
         front_blocked = self.sensor_readings["front"] < self.safe_distance
