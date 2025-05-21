@@ -53,7 +53,7 @@ class BeaconDetector(Node):
         # Stop the camera callback from being annoying if the centrer callback is running
         self.centering = False
         self.moments_for_turning = 0
-        self.stop = False
+        self.is_straight_ahead = False
 
         # constants
         self.m00_MINIMUM = 1_500_000
@@ -156,7 +156,9 @@ class BeaconDetector(Node):
                 self.centering = True
 
                 cv2.circle(self.debug_img, (cy, cz), 10, (0, 0, 255), 2)
-                if not self.in_simulator or True:
+
+                #TODO: delete me before hand in
+                if not self.in_simulator:
                     self.save_image(cv_img, filename="original.jpg", debug=True)
                     self.save_image(cropped_img, "cropped.jpg", debug=True)
                     self.save_image(img_mask, 'img_mask.jpg', debug=True)
@@ -176,7 +178,6 @@ class BeaconDetector(Node):
         cv2.waitKey(0) 
 
     # Callback that handles turning in place to try and centre a beacon
-    # TODO why is its movement so jittery? probably cos of time to process 1080p image
     def centre_pillar_callback(self):
         if not self.centering:
             return
@@ -190,15 +191,15 @@ class BeaconDetector(Node):
 
         # Check whether there is a blob worth stopping for
         if m00 > self.m00_MINIMUM: # TODO determine some good moo minima
-            # blob detected - determine whether we are looking at it or not
-            self.stop = centre - self.CENTRE_OFFSET <= cy <= centre + self.CENTRE_OFFSET
+            # blob detected - determine whether it is straight ahead or not
+            self.is_straight_ahead = centre - self.CENTRE_OFFSET <= cy <= centre + self.CENTRE_OFFSET
         else:
             # We have lost sight of the blob, give up and try again
             self.get_logger().info("Lost sight of blob, giving up. ")
             self.stop_beacon_detecting()
             return
         
-        if self.stop:
+        if self.is_straight_ahead:
             self.get_logger().info(
                 f"\nSTOPPED:\n"
                 f"The blob of colour is now dead-ahead at y-position {cy:.0f} pixels. Snapping picture."
