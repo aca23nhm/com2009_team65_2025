@@ -56,7 +56,7 @@ class BeaconDetector(Node):
         self.is_straight_ahead = False
 
         # constants
-        self.m00_MINIMUM = 0
+        self.m00_MINIMUM = 100_000
         self.TURN_RATE = -0.1
         self.CENTRE_OFFSET = 25 # pixels from the centre that we can stop in center_callback
 
@@ -131,8 +131,9 @@ class BeaconDetector(Node):
                 self.pass_data_to_centrer(moments, cv_img)
                 return
             
-            if moments['m00'] == 0 and False:
+            if moments['m00'] == 0:
                 return
+            
             cy = get_cy(moments)
             cz = get_cz(moments)
 
