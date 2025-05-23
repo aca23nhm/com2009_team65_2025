@@ -20,6 +20,18 @@ git clone https://github.com/aca23nhm/com2009_team65_2025.git
 
 This will install all our packages into your workspace ready to be run.
 
+### Packages used
+
+Our package requires the following python/ros2 packages to be installed in order to work properly:
+- rclpy
+- sensor_msgs
+- geometry_msgs
+- nav_msgs
+- std_msgs
+- cartographer_ros_msgs
+- cv2
+- ament_index_python
+
 ### Pairing the Robot
 
 This guide assumes you are already familiar with the robot pairing process.
