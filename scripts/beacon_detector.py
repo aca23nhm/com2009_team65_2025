@@ -54,8 +54,10 @@ class BeaconDetector(Node):
         self.centering = False
         self.moments_for_turning = 0
         self.is_straight_ahead = False
+        self.cooldown_after_losing = 0
 
         # constants
+        self.LOSING_COOLDOWN_LEN = 60
         self.m00_MINIMUM = 100_000
         self.TURN_RATE = -0.1
         self.CENTRE_OFFSET = 25 # pixels from the centre that we can stop in center_callback
@@ -178,6 +180,11 @@ class BeaconDetector(Node):
 
     # Callback that handles turning in place to try and centre a beacon
     def centre_pillar_callback(self):
+        if self.cooldown_after_losing > 0:
+            self.get_logger().info(f"Cooling down after losing pillar, time remaining until we can turn again: {self.cooldown_after_losing}")
+            self.cooldown_after_losing -= 1
+            return
+
         if not self.centering:
             return
 
@@ -196,6 +203,7 @@ class BeaconDetector(Node):
             # We have lost sight of the blob, give up and try again
             self.get_logger().info("Lost sight of blob, giving up. ")
             self.stop_beacon_detecting()
+            self.cooldown_after_losing = self.LOSING_COOLDOWN_LEN
             return
         
         if self.is_straight_ahead:
