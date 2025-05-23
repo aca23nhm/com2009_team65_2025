@@ -7,7 +7,7 @@ import numpy as np
 import time
 import os
 import cv2
-from math import sqrt, atan2, cos, sin, pi
+from math import sqrt, atan2, cos, sin, pi, degrees, radians
 from random import random, uniform
 from functools import partial
 
@@ -76,6 +76,19 @@ class MapExplorerRobot(Node):
         self.sector_width = self.environment_width / self.grid_dimension
         self.visited_grid = np.zeros((self.grid_dimension, self.grid_dimension), dtype=int)
 
+        # Room exploration parameters
+        self.room_entrance_threshold = 0.6  # Width threshold for room entrance (meters)
+        self.room_detection_window = 20  # Degrees each side of center to check for entrance
+        self.entrance_detected = False
+        self.entrance_approach_count = 0
+        self.max_entrance_attempts = 3  # Max attempts to enter a detected entrance
+        self.entrance_approach_angle = 0.0
+        self.entrance_approach_start_time = None
+        self.entrance_approach_timeout = 5.0  # seconds to attempt entrance
+        
+        # Room entry state machine
+        self.room_entry_state = "IDLE"  # IDLE, ALIGNING, ENTERING, COMPLETED
+        
         # Current sector position
         self.current_sector = {"x": None, "y": None}
         
@@ -106,6 +119,65 @@ class MapExplorerRobot(Node):
         )
         
         self.get_logger().info("Map Explorer initialized - beginning autonomous navigation")
+
+    def _detect_room_entrance(self, ranges):
+        """
+        Detect potential room entrances by looking for openings in walls.
+        Returns angle to center of detected entrance or None if none found.
+        """
+        # Hardcoded: assuming 360° LIDAR with 1° resolution and 0° at index 0
+        total_degrees = len(ranges)
+        center_index = total_degrees // 2  # Should correspond to front (180°)
+
+        window = self.room_detection_window  # e.g., 20
+        start_index = center_index - window
+        end_index = center_index + window
+        start_index = max(0, start_index)
+        end_index = min(len(ranges), end_index)
+
+        front_ranges = ranges[start_index:end_index]
+
+        entrance_threshold = 0.4
+        current_entrance = None
+        potential_entrances = []
+
+        for i, r in enumerate(front_ranges):
+            if r > entrance_threshold:
+                if current_entrance is None:
+                    current_entrance = [i, i]
+                else:
+                    current_entrance[1] = i
+            else:
+                if current_entrance is not None:
+                    idx1, idx2 = current_entrance
+                    width_angle = idx2 - idx1
+                    avg_range = np.mean(front_ranges[idx1:idx2+1])
+                    width = 2 * avg_range * sin(radians(width_angle / 2))
+                    if width >= self.room_entrance_threshold:
+                        center_angle = (idx1 + idx2) / 2
+                        angle_relative = center_angle - window
+                        potential_entrances.append((angle_relative, width))
+                    current_entrance = None
+
+        if current_entrance is not None:
+            idx1, idx2 = current_entrance
+            width_angle = idx2 - idx1
+            avg_range = np.mean(front_ranges[idx1:idx2+1])
+            width = 2 * avg_range * sin(radians(width_angle / 2))
+            if width >= self.room_entrance_threshold:
+                center_angle = (idx1 + idx2) / 2
+                angle_relative = center_angle - window
+                potential_entrances.append((angle_relative, width))
+
+        if potential_entrances:
+            best = max(potential_entrances, key=lambda x: x[1])
+            self.get_logger().info(
+                f"Detected entrance at {best[0]:.1f}° (width: {best[1]:.2f}m)"
+            )
+            return best[0]
+
+        return None
+
     
     def _process_lidar_data(self, scan_data: LaserScan):
         """Process incoming laser scan data to detect obstacles in different directions."""
@@ -142,9 +214,87 @@ class MapExplorerRobot(Node):
             self.sensor_readings["front_left"],
             self.sensor_readings["front_right"]
         )
+
+        # Check for room entrances (unless we're already handling one)
+        if self.room_entry_state == "IDLE":
+            entrance_angle = self._detect_room_entrance(ranges)
+            if entrance_angle is not None:
+                self.entrance_detected = True
+                self.entrance_approach_angle = entrance_angle
+                self.entrance_approach_count = 0
+                self.room_entry_state = "ALIGNING"
+                self.entrance_approach_start_time = self.get_clock().now()
+                self.get_logger().info(f"Starting room entry procedure for entrance at {entrance_angle:.1f}°")
+        else:
+            self.entrance_detected = False
         
         # Set flag that we've received lidar data
         self.lidar_initialized = True
+
+    def _handle_room_entry(self):
+        """State machine for handling room entry procedure."""
+        current_time = self.get_clock().now()
+        elapsed_time = (current_time - self.entrance_approach_start_time).nanoseconds * 1e-9
+        
+        # Check for timeout
+        if elapsed_time > self.entrance_approach_timeout:
+            self.get_logger().warn("Room entry timed out. Resuming exploration.")
+            self.room_entry_state = "IDLE"
+            self.entrance_detected = False
+            self.entrance_approach_count += 1
+            return False
+        
+        if self.room_entry_state == "ALIGNING":
+            # Align robot with the entrance
+            angle_threshold = radians(5)  # 5 degrees in radians
+            
+            # Calculate remaining angle to align
+            remaining_angle = radians(self.entrance_approach_angle)
+            
+            if abs(remaining_angle) > angle_threshold:
+                # Continue aligning
+                self.robot_command.linear.x = 0.0
+                self.robot_command.angular.z = np.sign(remaining_angle) * min(
+                    self.rotation_velocity * 0.7,
+                    abs(remaining_angle) * 2.0  # Proportional control
+                )
+                self.get_logger().info(
+                    f"Aligning with room entrance (remaining: {degrees(remaining_angle):.1f}°)",
+                    throttle_duration_sec=1.0
+                )
+            else:
+                # Alignment complete, start entering
+                self.room_entry_state = "ENTERING"
+                self.get_logger().info("Alignment complete. Starting to enter room.")
+                self.entrance_approach_start_time = current_time  # Reset timer for entering phase
+        
+        elif self.room_entry_state == "ENTERING":
+            # Move forward into the room while checking for obstacles
+            if self.sensor_readings["front"] > self.safe_distance * 1.2:
+                # Path is clear, continue forward
+                self.robot_command.linear.x = self.linear_velocity * 0.8  # Slightly slower
+                self.robot_command.angular.z = 0.0
+                
+                # Check if we've entered far enough (1 meter or hit timeout)
+                if elapsed_time > 2.0:  # After 2 seconds of moving forward
+                    self.room_entry_state = "COMPLETED"
+                    self.get_logger().info("Room entry completed successfully.")
+            else:
+                # Obstacle detected during entry
+                self.get_logger().warn("Obstacle detected during room entry. Aborting.")
+                self.room_entry_state = "IDLE"
+                self.entrance_approach_count += 1
+                return False
+        
+        elif self.room_entry_state == "COMPLETED":
+            # Entry completed successfully
+            self.room_entry_state = "IDLE"
+            self.entrance_detected = False
+            return True
+        
+        # Publish the movement command
+        self.motion_publisher.publish(self.robot_command)
+        return True
     
     def _update_position_data(self, odom_data: Odometry):
         """Track robot position and update coverage map."""
@@ -244,6 +394,11 @@ class MapExplorerRobot(Node):
         if self.system_shutdown or not self.lidar_initialized or not self.has_control:
             return
         
+        # Handle room entry procedure if active
+        if self.room_entry_state != "IDLE":
+            if self._handle_room_entry():
+                return
+        
         # Check if we're in a constrained space that needs special handling
         if self._is_confined_space():
             if self._handle_confined_space():
@@ -314,11 +469,10 @@ class MapExplorerRobot(Node):
         self.motion_publisher.publish(self.robot_command)
     
     def _is_confined_space(self):
-
-        if not self.has_control:
-            return
-
         """Detect if robot is in a confined space or corner."""
+        if not self.has_control:
+            return False
+            
         # Check if front is obstructed
         front_blocked = self.sensor_readings["front"] < self.safe_distance
         
@@ -524,7 +678,7 @@ class MapExplorerRobot(Node):
             )
             cv2.destroyAllWindows()
             for i in range(5):
-                self.vel_pub.publish(Twist())
+                self.motion_publisher.publish(Twist())
             self.shutdown = True
 
 def main(args=None):

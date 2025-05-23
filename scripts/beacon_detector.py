@@ -213,6 +213,7 @@ class BeaconDetector(Node):
             vel_cmd = Twist()
             vel_cmd.angular.z = self.TURN_RATE * (-1 if cy < centre else 1)
             self.vel_pub.publish(vel_cmd)
+            self.stop_beacon_detecting()
 
     def stop_beacon_detecting(self):
         self.vel_pub.publish(Twist())
