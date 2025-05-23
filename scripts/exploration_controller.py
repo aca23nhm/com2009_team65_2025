@@ -300,7 +300,7 @@ class MapExplorerRobot(Node):
                 )
         
         elif self.robot_state == "CHANGE_DIRECTION":
-            # Execute turn maneuver
+            # Execute turn manoeuver
             self.robot_command.linear.x = 0.0
             self.robot_command.angular.z = self.rotation_velocity * self.turn_preference
             
@@ -337,8 +337,8 @@ class MapExplorerRobot(Node):
         return front_blocked and sides_restricted and avg_space
     
     def _handle_confined_space(self):
-        """Execute special maneuver to escape confined spaces."""
-        self.get_logger().info("Confined space detected - executing escape maneuver")
+        """Execute special manoeuver to escape confined spaces."""
+        self.get_logger().info("Confined space detected - executing escape manoeuver")
         
         # Try to back up if there's space
         if self.sensor_readings["rear"] > 0.3:

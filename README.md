@@ -10,6 +10,8 @@ The system combines autonomous navigation, visual detection, and map generation 
 
 This guide assumes ROS2 has been installed via [the University's Guide](https://tom-howard.github.io/com2009/ros/).
 
+This guide is intended for people running our code on a real-life robot.
+
 ### Cloning the Repository
 
 To clone our repository, navigate to `~/ros2_ws/src/` and run:
