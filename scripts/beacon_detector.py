@@ -56,7 +56,7 @@ class BeaconDetector(Node):
         self.is_straight_ahead = False
 
         # constants
-        self.m00_MINIMUM = 1_500_000
+        self.m00_MINIMUM = 0
         self.TURN_RATE = -0.1
         self.CENTRE_OFFSET = 25 # pixels from the centre that we can stop in center_callback
 
@@ -113,13 +113,10 @@ class BeaconDetector(Node):
             return
 
         if self.waiting_for_image:
-        
-
-        
             height, width, _ = cv_img.shape
             #self.get_logger().info(f"Height: {height}, Width: {width} of original image")
             crop_width = int(width * 1)     # roughly equal to the absolute values from Ass1 Part6
-            crop_height = int(height * 0.375)
+            crop_height = int(height * 0.5)
             crop_y0 = int((width / 2) - (crop_width / 2))
             crop_z0 = 0
             cropped_img = cv_img[crop_z0:crop_z0+crop_height, crop_y0:crop_y0+crop_width]
@@ -134,7 +131,7 @@ class BeaconDetector(Node):
                 self.pass_data_to_centrer(moments, cv_img)
                 return
             
-            if moments['m00'] == 0:
+            if moments['m00'] == 0 and False:
                 return
             cy = get_cy(moments)
             cz = get_cz(moments)
@@ -142,7 +139,12 @@ class BeaconDetector(Node):
             clear_areas = self.image_has_clear_areas(img_mask, cz)
             self.get_logger().info(f"This image has clear areas: {clear_areas}")
             self.get_logger().info(f"White area in this image: {moments['m00']}.")
-            if moments['m00'] > 400000 and clear_areas and img_mask[cz, cy] == 255:
+            if not self.in_simulator or True:
+                self.save_image(cv_img, filename="original.jpg", debug=True)
+                self.save_image(cropped_img, "cropped.jpg", debug=True)
+                self.save_image(img_mask, 'img_mask.jpg', debug=True)
+                self.save_image(self.debug_img, filename='lines_centroid.jpg', debug=True)
+            if moments['m00'] > self.m00_MINIMUM and img_mask[cz, cy] == 255:
                 
                 # We have found something! lets try and turn towards it
 
