@@ -22,7 +22,7 @@ class BeaconDetector(Node):
         self.declare_parameter("target_colour", "yellow")
         self.target_colour = self.get_parameter("target_colour").get_parameter_value().string_value
 
-        self.declare_parameter("in_simulator", False)
+        self.declare_parameter("in_simulator", True)
         self.in_simulator = self.get_parameter("in_simulator").get_parameter_value().bool_value
         self.get_logger().info(f"In simulator is {self.in_simulator}")
         
