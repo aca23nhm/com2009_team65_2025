@@ -15,7 +15,7 @@ def generate_launch_description():
 
     in_simulator_arg = DeclareLaunchArgument(
         'in_simulator',
-        default_value='False',
+        default_value='True',
         description='Boolean value - are we running in the simulator or not?'
     )
 

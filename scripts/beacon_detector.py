@@ -54,9 +54,11 @@ class BeaconDetector(Node):
         self.centering = False
         self.moments_for_turning = 0
         self.is_straight_ahead = False
+        self.cooldown_after_losing = 0
 
         # constants
-        self.m00_MINIMUM = 1_500_000
+        self.LOSING_COOLDOWN_LEN = 60
+        self.m00_MINIMUM = 100_000
         self.TURN_RATE = -0.1
         self.CENTRE_OFFSET = 25 # pixels from the centre that we can stop in center_callback
 
@@ -113,13 +115,10 @@ class BeaconDetector(Node):
             return
 
         if self.waiting_for_image:
-        
-
-        
             height, width, _ = cv_img.shape
             #self.get_logger().info(f"Height: {height}, Width: {width} of original image")
             crop_width = int(width * 1)     # roughly equal to the absolute values from Ass1 Part6
-            crop_height = int(height * 0.375)
+            crop_height = int(height * 0.5)
             crop_y0 = int((width / 2) - (crop_width / 2))
             crop_z0 = 0
             cropped_img = cv_img[crop_z0:crop_z0+crop_height, crop_y0:crop_y0+crop_width]
@@ -136,13 +135,15 @@ class BeaconDetector(Node):
             
             if moments['m00'] == 0:
                 return
+            
             cy = get_cy(moments)
             cz = get_cz(moments)
 
             clear_areas = self.image_has_clear_areas(img_mask, cz)
             self.get_logger().info(f"This image has clear areas: {clear_areas}")
             self.get_logger().info(f"White area in this image: {moments['m00']}.")
-            if moments['m00'] > 400000 and clear_areas and img_mask[cz, cy] == 255:
+
+            if moments['m00'] > self.m00_MINIMUM and img_mask[cz, cy] == 255 and (self.in_simulator or clear_areas):
                 
                 # We have found something! lets try and turn towards it
 
@@ -179,6 +180,11 @@ class BeaconDetector(Node):
 
     # Callback that handles turning in place to try and centre a beacon
     def centre_pillar_callback(self):
+        if self.cooldown_after_losing > 0:
+            self.get_logger().info(f"Cooling down after losing pillar, time remaining until we can turn again: {self.cooldown_after_losing}")
+            self.cooldown_after_losing -= 1
+            return
+
         if not self.centering:
             return
 
@@ -197,6 +203,7 @@ class BeaconDetector(Node):
             # We have lost sight of the blob, give up and try again
             self.get_logger().info("Lost sight of blob, giving up. ")
             self.stop_beacon_detecting()
+            self.cooldown_after_losing = self.LOSING_COOLDOWN_LEN
             return
         
         if self.is_straight_ahead:
@@ -254,3 +261,10 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
+
+# save this debug code for later
+#if not self.in_simulator or True:
+#    self.save_image(cv_img, filename="original.jpg", debug=True)
+#    self.save_image(cropped_img, "cropped.jpg", debug=True)
+#    self.save_image(img_mask, 'img_mask.jpg', debug=True)
+#    self.save_image(self.debug_img, filename='lines_centroid.jpg', debug=True)
