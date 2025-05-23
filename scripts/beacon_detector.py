@@ -158,7 +158,7 @@ class BeaconDetector(Node):
                 cv2.circle(self.debug_img, (cy, cz), 10, (0, 0, 255), 2)
 
                 #TODO: delete me before hand in
-                if not self.in_simulator:
+                if not self.in_simulator or True:
                     self.save_image(cv_img, filename="original.jpg", debug=True)
                     self.save_image(cropped_img, "cropped.jpg", debug=True)
                     self.save_image(img_mask, 'img_mask.jpg', debug=True)
@@ -213,7 +213,6 @@ class BeaconDetector(Node):
             vel_cmd = Twist()
             vel_cmd.angular.z = self.TURN_RATE * (-1 if cy < centre else 1)
             self.vel_pub.publish(vel_cmd)
-            self.stop_beacon_detecting()
 
     def stop_beacon_detecting(self):
         self.vel_pub.publish(Twist())
