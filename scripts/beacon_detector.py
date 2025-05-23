@@ -144,7 +144,7 @@ class BeaconDetector(Node):
                 self.save_image(cropped_img, "cropped.jpg", debug=True)
                 self.save_image(img_mask, 'img_mask.jpg', debug=True)
                 self.save_image(self.debug_img, filename='lines_centroid.jpg', debug=True)
-            if moments['m00'] > self.m00_MINIMUM and img_mask[cz, cy] == 255:
+            if moments['m00'] > self.m00_MINIMUM and img_mask[cz, cy] == 255 and (self.in_simulator or clear_areas):
                 
                 # We have found something! lets try and turn towards it
 
