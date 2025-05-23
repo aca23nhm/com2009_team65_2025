@@ -139,11 +139,7 @@ class BeaconDetector(Node):
             clear_areas = self.image_has_clear_areas(img_mask, cz)
             self.get_logger().info(f"This image has clear areas: {clear_areas}")
             self.get_logger().info(f"White area in this image: {moments['m00']}.")
-            if not self.in_simulator or True:
-                self.save_image(cv_img, filename="original.jpg", debug=True)
-                self.save_image(cropped_img, "cropped.jpg", debug=True)
-                self.save_image(img_mask, 'img_mask.jpg', debug=True)
-                self.save_image(self.debug_img, filename='lines_centroid.jpg', debug=True)
+
             if moments['m00'] > self.m00_MINIMUM and img_mask[cz, cy] == 255 and (self.in_simulator or clear_areas):
                 
                 # We have found something! lets try and turn towards it
@@ -256,3 +252,10 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
+
+# save this debug code for later
+#if not self.in_simulator or True:
+#    self.save_image(cv_img, filename="original.jpg", debug=True)
+#    self.save_image(cropped_img, "cropped.jpg", debug=True)
+#    self.save_image(img_mask, 'img_mask.jpg', debug=True)
+#    self.save_image(self.debug_img, filename='lines_centroid.jpg', debug=True)
