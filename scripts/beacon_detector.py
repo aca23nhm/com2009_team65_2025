@@ -29,7 +29,7 @@ class BeaconDetector(Node):
         # Set up pub/subs, client for control sharing.
         self.camera_sub = self.create_subscription(
             msg_type=Image,
-            topic=f"/camera/{'color/' if not self.in_simulator else ''}image_raw",
+            topic=f"/camera/image_raw",
             callback=self.camera_callback,
             qos_profile=10
         )
@@ -140,8 +140,8 @@ class BeaconDetector(Node):
             cz = get_cz(moments)
 
             clear_areas = self.image_has_clear_areas(img_mask, cz)
-            self.get_logger().info(f"This image has clear areas: {clear_areas}")
-            self.get_logger().info(f"White area in this image: {moments['m00']}.")
+            # self.get_logger().info(f"This image has clear areas: {clear_areas}")
+            # self.get_logger().info(f"White area in this image: {moments['m00']}.")
 
             if moments['m00'] > self.m00_MINIMUM and img_mask[cz, cy] == 255 and (self.in_simulator or clear_areas):
                 
