@@ -46,7 +46,7 @@ class MapExplorerRobot(Node):
         self.trajectory_service = self.create_client(FinishTrajectory, "finish_trajectory")
         
         # Setup robot motion parameters
-        self.linear_velocity = 0.30  # Forward speed in m/s
+        self.linear_velocity = 0.35  # Forward speed in m/s
         self.rotation_velocity = 0.6  # Rotation speed in rad/s
         self.safe_distance = 0.38 # Minimum safe distance to obstacles
         
@@ -339,7 +339,7 @@ class MapExplorerRobot(Node):
 
         """Detect if robot is in a confined space or corner."""
         # Check if front is obstructed
-        front_blocked = self.sensor_readings["front"] < self.safe_distance 
+        front_blocked = self.sensor_readings["front"] < self.safe_distance * 1.1
         
         # Check if sides are also restricted
         sides_restricted = (
