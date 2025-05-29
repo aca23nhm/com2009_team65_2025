@@ -2,7 +2,7 @@
 
 ## Summary
 
-This ROS2 application enables a TurtleBot3 Waffle to autonomously explore an arena, avoiding obstacles and building an occupancy grid with SLAM. It uses LiDAR 
+This ROS2 application enables a TurtleBot3 Waffle to autonomously explore an arena in simulation, avoiding obstacles and building an occupancy grid with SLAM. It uses LiDAR 
 and odometry data to detect and navigate around obstacles while marking visited areas on a 3×3 grid. The robot moves in randomized segments with adaptive 
 turning. Simultaneously, it identifies coloured beacons using the robot's camera, photographing it and saving the image when it is fully within view.
 
