@@ -46,35 +46,15 @@ class MapExplorerRobot(Node):
         self.trajectory_service = self.create_client(FinishTrajectory, "finish_trajectory")
         
         # Setup robot motion parameters
-        self.linear_velocity = 0.24  # Forward speed in m/s
+        self.linear_velocity = 0.30  # Forward speed in m/s
         self.rotation_velocity = 0.6  # Rotation speed in rad/s
-        self.safe_distance = 0.35 # Minimum safe distance to obstacles
+        self.safe_distance = 0.38 # Minimum safe distance to obstacles
         
         # Initialize state variables
         self.robot_state = "EXPLORE_FORWARD"
         self.robot_command = Twist()
         self.lidar_initialized = False
         self.system_shutdown = False
-
-        # room entrance state 
-        self.room_entrance_threshold = 0.4  # Maximum width to consider a room entrance (meters)
-        self.room_detection_window = 60  # Degrees each side of center to check for entrance
-        self.entrance_detected = False
-        self.entrance_angle = 0.0
-        self.rooms_entered = 0
-        self.max_rooms = 10
-        self.room_entry_state = "IDLE"  # IDLE, ALIGNING, ENTERING, COMPLETED
-        self.entrance_approach_start_time = None
-        self.entrance_approach_timeout = 5.0  # seconds to attempt entrance
-        self.room_locations = []  # Track where we found rooms
-
-        # Room exit handling
-        # self.entry_position = None  # Where we entered the room
-        # self.entry_heading = None   # Direction we were facing when entering
-        # self.exit_search_start = None
-        # self.exit_search_timeout = 10.0  # seconds to search for exit
-        # self.min_exit_width = 0.4  # meters, minimum width to consider as exit
-        # self.room_exit_state = "NOT_IN_ROOM"  # NOT_IN_ROOM, SEARCHING, EXITING
         
         # Position tracking
         self.position_initialized = False
@@ -162,15 +142,6 @@ class MapExplorerRobot(Node):
             self.sensor_readings["front_left"],
             self.sensor_readings["front_right"]
         )
-        # Check for room entrances (unless we're already handling one)
-        if self.room_entry_state == "IDLE" and self.rooms_entered < self.max_rooms:
-            entrance_angle = self._detect_room_entrance(ranges)
-            if entrance_angle is not None:
-                self.entrance_detected = True
-                self.entrance_angle = entrance_angle
-                self.room_entry_state = "ALIGNING"
-                self.entrance_approach_start_time = self.get_clock().now()
-                self.get_logger().info(f"Detected room entrance at {entrance_angle:.1f}°")
     
         # Set flag that we've received lidar data
         self.lidar_initialized = True
@@ -258,284 +229,6 @@ class MapExplorerRobot(Node):
             f"Position: ({rel_x:.2f}, {rel_y:.2f}) | Sector: ({display_x}, {display_y})",
             throttle_duration_sec=5
         )
-
-    def _detect_room_entrance(self, ranges):
-        """
-        Enhanced room entrance detection with fewer false positives
-        """
-        start_angle = 180 - self.room_detection_window
-        end_angle = 180 + self.room_detection_window
-        front_ranges = ranges[start_angle:end_angle]
-        
-        # Find all potential openings
-        openings = []
-        current_opening = None
-        min_gap = 0.30  # Minimum gap to consider (meters)
-        
-        for i, distance in enumerate(front_ranges):
-            if distance > min_gap:
-                if current_opening is None:
-                    current_opening = {'start': i, 'end': i, 'min_depth': distance}
-                else:
-                    current_opening['end'] = i
-                    current_opening['min_depth'] = min(current_opening['min_depth'], distance)
-            else:
-                if current_opening is not None:
-                    openings.append(current_opening)
-                    current_opening = None
-        
-        if current_opening is not None:
-            openings.append(current_opening)
-        
-        # Analyze potential openings
-        valid_entrances = []
-        for opening in openings:
-            # Calculate width in meters
-            width_degrees = opening['end'] - opening['start']
-            width_meters = 2 * opening['min_depth'] * sin(radians(width_degrees/2))
-            
-            # Check if it meets minimum width for a room entrance
-            if width_meters <= self.room_entrance_threshold:
-                # Additional verification - check depth profile
-                depth_samples = 5
-                depth_consistent = True
-                sample_points = np.linspace(opening['start'], opening['end'], depth_samples)
-                
-                for point in sample_points:
-                    # Check if the opening continues at depth
-                    depth_check_angle = int(point)
-                    depth_distance = ranges[depth_check_angle]
-                    if depth_distance < min_gap * 1.5:  # Should remain open
-                        depth_consistent = False
-                        break
-                
-                if depth_consistent:
-                    center_angle = (opening['start'] + opening['end']) / 2
-                    valid_entrances.append({
-                        'angle': center_angle - self.room_detection_window,
-                        'width': width_meters,
-                        'depth': opening['min_depth']
-                    })
-        
-        if valid_entrances:
-            # Select the most promising entrance
-            valid_entrances.sort(key=lambda x: x['width'], reverse=True)
-            best_entrance = valid_entrances[0]
-            
-            # Additional verification - require certain width-to-depth ratio
-            if best_entrance['width'] / best_entrance['depth'] > 0.5:  # Entrance should be wide relative to depth
-                self.get_logger().info(
-                    f"Detected room entrance at {best_entrance['angle']:.1f}° "
-                    f"(width: {best_entrance['width']:.2f}m, depth: {best_entrance['depth']:.2f}m)"
-                )
-                return best_entrance['angle']
-        
-        return None
-    
-    def _handle_room_entry(self):
-        """State machine for handling room entry procedure."""
-        if self.room_entry_state == "IDLE":
-            return False
-        
-        current_time = self.get_clock().now()
-        elapsed_time = (current_time - self.entrance_approach_start_time).nanoseconds * 1e-9
-        
-        # Check for timeout
-        if elapsed_time > self.entrance_approach_timeout:
-            self.get_logger().warn("Room entry timed out. Resuming exploration.")
-            self.room_entry_state = "IDLE"
-            self.entrance_detected = False
-            return False
-        
-        if self.room_entry_state == "ALIGNING":
-            # Align robot with the entrance
-            angle_threshold = radians(5)  # 5 degrees in radians
-            remaining_angle = radians(self.entrance_angle)
-            
-            if abs(remaining_angle) > angle_threshold:
-                # Continue aligning
-                self.robot_command.linear.x = 0.0
-                self.robot_command.angular.z = np.sign(remaining_angle) * min(
-                    self.rotation_velocity * 0.7,
-                    abs(remaining_angle) * 2.0  # Proportional control
-                )
-                self.get_logger().info(
-                    f"Aligning with room entrance (remaining: {degrees(remaining_angle):.1f}°)",
-                    throttle_duration_sec=1.0
-                )
-            else:
-                # Alignment complete, start entering
-                self.room_entry_state = "ENTERING"
-                self.get_logger().info("Alignment complete. Starting to enter room.")
-                self.entrance_approach_start_time = current_time  # Reset timer
-        
-        elif self.room_entry_state == "ENTERING":
-            # Move forward into the room while checking for obstacles
-            if self.sensor_readings["front"] > self.safe_distance * 1.2:
-                # Path is clear, continue forward
-                self.robot_command.linear.x = self.linear_velocity * 0.8
-                self.robot_command.angular.z = 0.0
-                
-                # Check if we've entered far enough (1 meter or hit timeout)
-                if self.sensor_readings["front"] < 1.0:  # After 4 seconds of moving forward
-                    self.room_entry_state = "COMPLETED"
-            else:
-                # Handle confined space during entry
-                if self._is_confined_space():
-                    if self._handle_confined_space():
-                        return True
-                else:
-                    self.get_logger().warn("Obstacle detected during room entry. Aborting.")
-                    self.room_entry_state = "IDLE"
-                    return False
-        
-        elif self.room_entry_state == "COMPLETED":
-            # Entry completed successfully
-            self.rooms_entered += 1
-            self.room_locations.append((self.current_position["x"], self.current_position["y"]))
-            self.get_logger().info(f"Successfully entered room {self.rooms_entered}/{self.max_rooms}")
-            self.room_entry_state = "IDLE"
-
-            # Record entry information before completing
-            # self.entry_position = (self.current_position["x"], self.current_position["y"])
-            # self.entry_heading = self.get_current_heading()  # Implement this method
-            # self.room_exit_state = "SEARCHING"
-            # self.exit_search_start = self.get_clock().now()
-            return True
-        
-        # Publish the movement command
-        self.motion_publisher.publish(self.robot_command)
-        return True
-    
-    # def find_best_exit(self, ranges):
-    #     """Find potential exits other than where we entered"""
-    #     potential_exits = []
-        
-    #     # Scan all around (except rear 60° where we entered)
-    #     for angle in range(60, 300):
-    #         if ranges[angle] > self.min_exit_width:
-    #             # Check if this is a substantial opening
-    #             width = self.calculate_opening_width(ranges, angle)
-    #             if width >= self.min_exit_width:
-    #                 potential_exits.append({
-    #                     'angle': angle,
-    #                     'width': width,
-    #                     'distance': ranges[angle]
-    #                 })
-        
-    #     if potential_exits:
-    #         # Prefer widest exit that's not behind us
-    #         potential_exits.sort(key=lambda x: x['width'], reverse=True)
-    #         return potential_exits[0]
-    #     return None
-
-    # def calculate_opening_width(self, ranges, center_angle):
-    #     """Calculate width of an opening at a given angle"""
-    #     # Similar to your room entrance detection but for any angle
-    #     width_degrees = 0
-    #     left = center_angle
-    #     right = center_angle
-        
-    #     # Expand left until hit obstacle
-    #     while left > 0 and ranges[left] > self.min_exit_width:
-    #         left -= 1
-    #         width_degrees += 1
-        
-    #     # Expand right until hit obstacle
-    #     while right < 360 and ranges[right] > self.min_exit_width:
-    #         right += 1
-    #         width_degrees += 1
-        
-    #     return 2 * ranges[center_angle] * sin(radians(width_degrees/2))
-    
-    # def _handle_room_exit(self):
-    #     """Manage the process of exiting a room"""
-    #     if self.room_exit_state == "NOT_IN_ROOM":
-    #         return False
-        
-    #     current_time = self.get_clock().now()
-    #     elapsed_time = (current_time - self.exit_search_start).nanoseconds * 1e-9
-        
-    #     # Check for timeout
-    #     if elapsed_time > self.exit_search_timeout:
-    #         self.get_logger().warn("Exit search timed out. Reversing through entrance.")
-    #         self.room_exit_state = "EXITING"
-    #         self.exit_through_entrance()
-    #         return True
-        
-    #     if self.room_exit_state == "SEARCHING":
-    #         # Look for exits
-    #         ranges = self.get_latest_scan()  # You'll need to store the last scan
-            
-    #         # First try to find a new exit
-    #         best_exit = self.find_best_exit(ranges)
-    #         if best_exit:
-    #             self.get_logger().info(f"Found exit at {best_exit['angle']}° (width: {best_exit['width']:.2f}m)")
-    #             self.navigate_to_exit(best_exit['angle'])
-    #             self.room_exit_state = "EXITING"
-    #             return True
-            
-    #         # If no exit found, continue searching
-    #         self.robot_command.linear.x = 0.1  # Slow forward movement
-    #         self.robot_command.angular.z = 0.3  # Gentle turning
-    #         self.motion_publisher.publish(self.robot_command)
-    #         return True
-        
-    #     elif self.room_exit_state == "EXITING":
-    #         # Check if we've exited (position far enough from entry point)
-    #         distance_from_entry = sqrt(
-    #             (self.current_position["x"] - self.entry_position[0])**2 +
-    #             (self.current_position["y"] - self.entry_position[1])**2
-    #         )
-            
-    #         if distance_from_entry > 1.5:  # 1m from entry point
-    #             self.get_logger().info("Successfully exited room")
-    #             self.room_exit_state = "NOT_IN_ROOM"
-    #             return True
-            
-    #         # Continue exiting behavior
-    #         return True
-    #     return False
-
-    # def get_current_heading(self):
-    #     """
-    #     Get the robot's current heading (yaw) from the odometry data.
-        
-    #     Returns:
-    #         float: The current heading in radians, with 0 pointing along the positive x-axis,
-    #             and positive angles representing counter-clockwise rotation.
-    #     """
-    #     if not hasattr(self, 'current_odom') or self.current_odom is None:
-    #         return 0.0  # Default value if no odometry data received yet
-        
-    #     # Extract the quaternion orientation from the odometry message
-    #     orientation = self.current_odom.pose.pose.orientation
-    #     x = orientation.x
-    #     y = orientation.y
-    #     z = orientation.z
-    #     w = orientation.w
-        
-    #     # Convert quaternion to Euler angles (we only need yaw)
-    #     # This is the standard method for quaternion to Euler conversion
-    #     t3 = +2.0 * (w * z + x * y)
-    #     t4 = +1.0 - 2.0 * (y * y + z * z)
-    #     yaw = atan2(t3, t4)
-        
-    #     return yaw
-
-    # def exit_through_entrance(self):
-    #     """Execute 180° turn and exit through entrance"""
-    #     self.get_logger().info("Executing 180° turn to exit through entrance")
-    #     # Turn around (simplified - implement proper turn control)
-    #     self.robot_command.linear.x = 0.0
-    #     self.robot_command.angular.z = self.rotation_velocity
-    #     self.motion_publisher.publish(self.robot_command)
-    #     time.sleep(3.14 / self.rotation_velocity)  # Time for 180° turn
-        
-    #     # Move forward out of room
-    #     self.robot_command.angular.z = 0.0
-    #     self.robot_command.linear.x = self.linear_velocity
-    #     self.motion_publisher.publish(self.robot_command)
     
     def _navigation_control_loop(self):
         """Main control loop that manages robot navigation behavior."""
@@ -587,23 +280,24 @@ class MapExplorerRobot(Node):
                     )
                 else:
                     # Continue moving forward with side-avoidance tilt
-                    self.robot_command.linear.x = self.linear_velocity
+                    self.robot_command.linear.x = self.linear_velocity 
 
-                    side_clearance_threshold = self.safe_distance
+                    side_clearance_threshold = 0.2
                     left = self.sensor_readings["left"]
                     right = self.sensor_readings["right"]
 
-                    if right < side_clearance_threshold and left > right:
+                    if right < side_clearance_threshold:
                         # Right too close, tilt left
-                        self.robot_command.angular.z = 0.1 * self.rotation_velocity
+                        self.robot_command.angular.z = 0.01
                         self.get_logger().info(f"Right wall too close ({right:.2f}m), tilting left.")
-                    elif left < side_clearance_threshold and right > left:
+                    elif left < side_clearance_threshold :
                         # Left too close, tilt right
-                        self.robot_command.angular.z = -0.1 * self.rotation_velocity
+                        self.robot_command.angular.z = -0.01
                         self.get_logger().info(f"Left wall too close ({left:.2f}m), tilting right.")
                     else:
                         # Go straight
                         self.robot_command.angular.z = 0.0
+
             else:
                 # Obstacle ahead, need to turn
                 self.robot_state = "CHANGE_DIRECTION"
@@ -649,8 +343,8 @@ class MapExplorerRobot(Node):
         
         # Check if sides are also restricted
         sides_restricted = (
-            self.sensor_readings["front_left"] < self.safe_distance or
-            self.sensor_readings["front_right"] < self.safe_distance  
+            self.sensor_readings["front_left"] < self.safe_distance * 1.1 or
+            self.sensor_readings["front_right"] < self.safe_distance  * 1.1
         )
         
         # Check average space around robot
@@ -667,7 +361,7 @@ class MapExplorerRobot(Node):
         
         # Try to back up if there's space
         if self.sensor_readings["rear"] > 0.3:
-            self.robot_command.linear.x = -0.10  # Gentle reverse
+            self.robot_command.linear.x = -0.05  # Gentle reverse
         else:
             self.robot_command.linear.x = 0.0  # Can't back up
         
@@ -678,8 +372,9 @@ class MapExplorerRobot(Node):
             escape_direction = -1  # Turn right
         
         # Apply increased rotation for quicker escape
-        self.robot_command.angular.z = self.rotation_velocity * 1.2 * escape_direction
-        self.robot_command.linear.x = 0.02
+        self.robot_command.angular.z = self.rotation_velocity * 1.5 * escape_direction
+        self.robot_command.linear.x = 0.01
+
         self.motion_publisher.publish(self.robot_command)
         
         # Reset distance tracking
@@ -692,7 +387,7 @@ class MapExplorerRobot(Node):
         """Generate a variable segment length using modified Levy flight pattern."""
         # Apply Levy-like distribution (more short moves, occasional long ones)
         if random() < 0.8:  # 80% chance of longer movement
-            return uniform(1.0, 3.0)
+            return uniform(2.0, 3.0)
         else:
             return uniform(0.5, 1.0)
     
@@ -750,19 +445,6 @@ class MapExplorerRobot(Node):
     
     def _select_optimal_direction(self):
         """Choose optimal turn direction based on multiple factors."""
-        # First check if we know of any room locations we haven't entered yet
-        if len(self.room_locations) > self.rooms_entered and self.rooms_entered < self.max_rooms:
-            nearest_room = self.room_locations[self.rooms_entered]
-            dx = nearest_room[0] - self.current_position["x"]
-            dy = nearest_room[1] - self.current_position["y"]
-            angle_to_room = atan2(dy, dx)
-            
-            # Prefer direction that moves us toward the next room
-            if angle_to_room > 0:
-                return 1  # Turn left toward room
-            else:
-                return -1  # Turn right toward room
-        
         # Fall back to original decision logic
         scores = {"left": 0.0, "right": 0.0}
         
