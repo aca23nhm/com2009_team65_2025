@@ -57,7 +57,7 @@ class BeaconDetector(Node):
         self.cooldown_after_losing = 0
 
         # constants
-        self.LOSING_COOLDOWN_LEN = 5
+        self.LOSING_COOLDOWN_LEN = 60
         self.m00_MINIMUM = 100_000
         self.TURN_RATE = -0.1
         self.CENTRE_OFFSET = 25 # pixels from the centre that we can stop in center_callback
@@ -116,7 +116,6 @@ class BeaconDetector(Node):
 
         if self.waiting_for_image:
             height, width, _ = cv_img.shape
-            #self.get_logger().info(f"Height: {height}, Width: {width} of original image")
             crop_width = int(width * 1)     # roughly equal to the absolute values from Ass1 Part6
             crop_height = int(height * 0.5)
             crop_y0 = int((width / 2) - (crop_width / 2))
@@ -140,6 +139,8 @@ class BeaconDetector(Node):
             cz = get_cz(moments)
 
             clear_areas = self.image_has_clear_areas(img_mask, cz)
+            # self.get_logger().info(f"This image has clear areas: {clear_areas}")
+            # self.get_logger().info(f"White area in this image: {moments['m00']}.")
 
             if moments['m00'] > self.m00_MINIMUM and img_mask[cz, cy] == 255 and (self.in_simulator or clear_areas):
                 
@@ -155,6 +156,7 @@ class BeaconDetector(Node):
                 self.centering = True
 
                 cv2.circle(self.debug_img, (cy, cz), 10, (0, 0, 255), 2)
+
 
     
     def show_img(self, img, img_name, save_img=False): 
@@ -218,18 +220,23 @@ class BeaconDetector(Node):
         self.send_control_req(True)
 
     def save_image(self, img, filename='target_beacon.jpg', debug=False):
-        save_path = "/home/student/ros2_ws/src/com2009_team65_2025/snaps"
+        save_path = "/home/student/ros2_ws/src/com2009_team65_2025/snaps" 
         
         os.makedirs(save_path, exist_ok=True)
         filename = os.path.join(save_path, filename)
         cv2.imwrite(filename, img)
-        self.get_logger().info(f"Saved beacon snapshot to: {filename}") 
+        self.get_logger().info(f"Saved beacon snapshot to: {filename}")
+
+        if not debug:
+            self.waiting_for_image = False
+            cv2.destroyAllWindows()    
 
     def send_control_req(self, giving_back : bool):
         control_request = ControlSharingReq.Request()
         control_request.giving_back = giving_back
         self.control_requester.call_async(control_request)
 
+# we need to adapt the cy to the full FOV coordinate system? to get it to line up properly????
 def get_cy(moments, epsilon=1e-4):
     return int(moments['m10'] / (moments['m00'] + epsilon))
 
@@ -247,3 +254,4 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
+

@@ -46,7 +46,7 @@ class MapExplorerRobot(Node):
         self.trajectory_service = self.create_client(FinishTrajectory, "finish_trajectory")
         
         # Setup robot motion parameters
-        self.linear_velocity = 0.35  # Forward speed in m/s
+        self.linear_velocity = 0.26  # Forward speed in m/s
         self.rotation_velocity = 0.6  # Rotation speed in rad/s
         self.safe_distance = 0.38 # Minimum safe distance to obstacles
         
