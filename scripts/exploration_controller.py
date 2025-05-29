@@ -46,9 +46,9 @@ class MapExplorerRobot(Node):
         self.trajectory_service = self.create_client(FinishTrajectory, "finish_trajectory")
         
         # Setup robot motion parameters
-        self.linear_velocity = 0.3 # Forward speed in m/s
+        self.linear_velocity = 0.24  # Forward speed in m/s
         self.rotation_velocity = 0.6  # Rotation speed in rad/s
-        self.safe_distance = 0.38  # Minimum safe distance to obstacles
+        self.safe_distance = 0.35 # Minimum safe distance to obstacles
         
         # Initialize state variables
         self.robot_state = "EXPLORE_FORWARD"
@@ -549,26 +549,16 @@ class MapExplorerRobot(Node):
                 self.get_logger().info("Exploration time limit reached. Finalizing map...")
                 self._finalize_exploration()
                 return
-        
+
         # Skip processing if we're shutting down, haven't received sensor data yet, or if we don't have control
         if self.system_shutdown or not self.lidar_initialized or not self.has_control:
             return
-        
+
         # Check if we're in a constrained space that needs special handling
         if self._is_confined_space():
             if self._handle_confined_space():
                 return
-            
-        # Handle room entry procedure if active
-        if self.room_entry_state != "IDLE":
-            if self._handle_room_entry():
-                return
-            
-        # # Handle room exit if needed
-        # if self.room_exit_state != "NOT_IN_ROOM":
-        #     if self._handle_room_exit():
-        #         return
-        
+
         # Main navigation state machine
         if self.robot_state == "EXPLORE_FORWARD":
             # Check if path is clear ahead
@@ -596,9 +586,24 @@ class MapExplorerRobot(Node):
                         f"New target distance: {self.target_segment_length:.2f}m"
                     )
                 else:
-                    # Continue moving forward
+                    # Continue moving forward with side-avoidance tilt
                     self.robot_command.linear.x = self.linear_velocity
-                    self.robot_command.angular.z = 0.0
+
+                    side_clearance_threshold = self.safe_distance
+                    left = self.sensor_readings["left"]
+                    right = self.sensor_readings["right"]
+
+                    if right < side_clearance_threshold and left > right:
+                        # Right too close, tilt left
+                        self.robot_command.angular.z = 0.1 * self.rotation_velocity
+                        self.get_logger().info(f"Right wall too close ({right:.2f}m), tilting left.")
+                    elif left < side_clearance_threshold and right > left:
+                        # Left too close, tilt right
+                        self.robot_command.angular.z = -0.1 * self.rotation_velocity
+                        self.get_logger().info(f"Left wall too close ({left:.2f}m), tilting right.")
+                    else:
+                        # Go straight
+                        self.robot_command.angular.z = 0.0
             else:
                 # Obstacle ahead, need to turn
                 self.robot_state = "CHANGE_DIRECTION"
@@ -618,7 +623,7 @@ class MapExplorerRobot(Node):
                     f"Obstacle at {self.sensor_readings['front']:.2f}m. "
                     f"Turning {self._direction_to_string(self.turn_preference)}."
                 )
-        
+
         elif self.robot_state == "CHANGE_DIRECTION":
             # Execute turn manoeuver
             self.robot_command.linear.x = 0.0
@@ -629,7 +634,7 @@ class MapExplorerRobot(Node):
                 self.robot_state = "EXPLORE_FORWARD"
                 self.get_logger().info("Path now clear. Moving forward.")
                 self.distance_since_last_turn = 0.0
-        
+
         # Send movement command to robot
         self.motion_publisher.publish(self.robot_command)
     
@@ -662,7 +667,7 @@ class MapExplorerRobot(Node):
         
         # Try to back up if there's space
         if self.sensor_readings["rear"] > 0.3:
-            self.robot_command.linear.x = -0.05  # Gentle reverse
+            self.robot_command.linear.x = -0.10  # Gentle reverse
         else:
             self.robot_command.linear.x = 0.0  # Can't back up
         
@@ -673,8 +678,8 @@ class MapExplorerRobot(Node):
             escape_direction = -1  # Turn right
         
         # Apply increased rotation for quicker escape
-        self.robot_command.angular.z = self.rotation_velocity * escape_direction
-        self.robot_command.linear.x = 0.01
+        self.robot_command.angular.z = self.rotation_velocity * 1.2 * escape_direction
+        self.robot_command.linear.x = 0.02
         self.motion_publisher.publish(self.robot_command)
         
         # Reset distance tracking
@@ -686,8 +691,8 @@ class MapExplorerRobot(Node):
     def _generate_segment_length(self):
         """Generate a variable segment length using modified Levy flight pattern."""
         # Apply Levy-like distribution (more short moves, occasional long ones)
-        if random() < 0.6:  # 60% chance of longer movement
-            return uniform(2.0, 3.0)
+        if random() < 0.8:  # 80% chance of longer movement
+            return uniform(1.0, 3.0)
         else:
             return uniform(0.5, 1.0)
     
